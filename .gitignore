@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Runtime state -- the database holds what a person has told the assistant about
+# themselves, in plaintext, and is never committed
+var/
+*.db
+*.db-wal
+*.db-shm
+
+# Local environment
+.env
+.env.local
+*.pem
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# import-linter's graph cache
+.import_linter_cache/
