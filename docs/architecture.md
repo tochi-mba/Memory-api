@@ -26,7 +26,7 @@ the store reads and writes; the schemas are the envelopes around them. The HTTP 
 public and its operation ids are MCP tool names, so it has to be able to grow a field
 without the storage layer having an opinion about it.
 
-### One import contract, not five
+### The one import contract
 
 `lint-imports` enforces exactly one rule, inside `make check`: **routers may not import
 `keyring_client`, `httpx` or `jwt`.** Indirect imports are allowed, so a router still
@@ -117,7 +117,7 @@ Startup runs `_add_missing_columns`, which adds `topic_id` if an older database 
 `CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so without this a
 column added after the first release would silently never appear.
 
-## Corrections are append-only, and nothing is hard-deleted
+## Corrections are append-only, and a memory is never hard-deleted
 
 A correction does not overwrite. It writes a new row and closes the old one:
 
@@ -174,14 +174,14 @@ Each is min-max normalised over the candidates in hand — so a component with n
 contributes nothing rather than dividing by zero — and the three are summed. Ties break on
 `confidence`, then on id, so two runs over the same data agree.
 
-**The recency term decays from last access, not from creation**, and that is the choice the
-whole ranking rests on. A person's sister's name is years old and matters every week; yesterday's
-one-off note is new and matters once. Decaying from creation ranks them the wrong way round
-and keeps doing it, evicting exactly the memories that have proved themselves. So retrieval
-stamps `last_accessed_at` and increments `access_count` on everything it returns: use is
-what keeps a memory near the top, and disuse is what lets it sink. (The decay constant is 30
-days, applied as `exp(-Δt/τ)`: weight falls to 1/e after 30 days and to a half after about
-21.)
+**The recency term decays from last access, not from creation**, and that is the choice
+the whole ranking rests on. A person's sister's name is years old and matters every week;
+yesterday's one-off note is new and matters once. Decaying from creation ranks them the
+wrong way round and keeps doing it, evicting exactly the memories that have proved
+themselves. So retrieval stamps `last_accessed_at` and increments `access_count` on
+everything it returns: use is what keeps a memory near the top, and disuse is what lets it
+sink. (The decay constant is 30 days, applied as `exp(-Δt/τ)`: weight falls to 1/e after 30
+days and to a half after about 21.)
 
 Two costs come with it. Retrieval is a write, so a read path takes the write lock briefly.
 And normalising needs the whole candidate set, so the query materialises every matching row

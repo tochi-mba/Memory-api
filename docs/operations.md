@@ -58,6 +58,7 @@ which this service never calls.
 ```bash
 make docker       # builds memory-api:local
 docker run -p 8009:8009 --env-file .env \
+  -e MEMORY_DATABASE_PATH=/var/lib/memory/memory.db \
   -v memory-data:/var/lib/memory memory-api:local
 ```
 
@@ -186,12 +187,13 @@ after: keep backups exactly as long as the deal with the person says, and no lon
 
 ## Erasure
 
-Nothing in this service hard-deletes on request. The path has four steps, and each exists
-because the one before it is not enough:
+No *memory* is deleted on request — blocks are the exception, and go immediately. The path
+has four steps, and each exists because the one before it is not enough:
 
 1. **Forget.** `forget_memory`, `delete_memory` or `forget_all_memories` stamps
    `forgotten_at`. The memory vanishes from both views immediately, and from the topic
-   index with it.
+   index with it. (`forget_all_memories` also removes the account's blocks outright; those
+   have no tombstone and do not come back.)
 2. **The grace period.** `restore_memory` undoes a forget for as long as the row is still
    there, which is the difference between a person changing their mind and a person losing
    something. The clock starts at the *first* forget: forgetting twice does not extend it.

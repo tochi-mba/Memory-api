@@ -192,7 +192,8 @@ correction stored without the thing it corrected being retired.
 POST /v1/memory/batch
 {"decisions": [
   {"action": "ADD",    "memory": {"title": "Favourite tea", "body": "Earl Grey"}},
-  {"action": "UPDATE", "memory_id": "mem_ab…", "memory": {"title": "Home city", "body": "Bristol"}},
+  {"action": "UPDATE", "memory_id": "mem_ab…",
+                     "memory": {"title": "Home city", "body": "Bristol"}},
   {"action": "DELETE", "memory_id": "mem_cd…"},
   {"action": "NOOP",   "memory_id": "mem_ef…"}
 ]}
@@ -253,7 +254,7 @@ A title is flattened to one line and clamped to 80 characters, a summary to 200.
 rendered into a structured block a model reads, where a newline would break the shape and a
 title long enough to fill the budget would push out the topics underneath it.
 
-`profile` narrows the index; account-wide topics are always included.
+`profile` narrows the index to that profile's topics plus the account-wide ones. **With no `profile` you get the account-wide topics only** — a profile's subjects are its own, which is what keeps a work summary out of a personal one.
 
 ## Filters
 
@@ -311,11 +312,16 @@ quoted before it reaches the engine, so FTS operators and punctuation are **data
 query language**: `concise OR`, `NEAR(`, `*` and an unbalanced quote are all words to look
 for, not a syntax error and not a 500. Terms are OR-ed.
 
-A query with no words in it — empty, or only punctuation — is a 422, because "no matches"
-and "you did not ask for anything" are different answers.
+A query that is empty or only whitespace is a **422**, because "no matches" and "you did
+not ask for anything" are different answers. A query of punctuation quotes to a phrase that
+tokenises to nothing and honestly matches nothing, which is the same distinction made one
+step later.
 
 Without `q`, `search_memories` still ranks: it returns the most relevant memories for the
 current profile and session by recency of use and importance alone.
+
+`list_memories` accepts `q` too. There it filters and nothing more — no ranking, no access
+stamp — so the page stays in write order and stays pageable by cursor.
 
 ## Memory blocks
 

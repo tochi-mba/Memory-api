@@ -88,10 +88,10 @@ Six axes, three tests:
 | **Untrusted sources** | An untrusted memory is stored, is absent from retrieval, and appears only after `confirm_memory`. |
 | **Semantic versus episodic** | A `fact` written in one session is retrievable; an `episode` is not. A conversation's own turns are not facts about a life. |
 
-Each test is an axis rather than a case, which is why the file is barely sixty lines. A new *case*
-for an existing axis belongs in `test_store.py` or `test_memory_routes.py`; a new **axis**
-belongs here, and adding one is a claim that the service promises something it did not
-promise before.
+Each test is an axis rather than a case, which is why the file is barely sixty lines. A new
+*case* for an existing axis belongs in `test_store.py` or `test_memory_routes.py`; a new
+**axis** belongs here, and adding one is a claim that the service promises something it did
+not promise before.
 
 ## The tests that must never be deleted
 
@@ -107,8 +107,11 @@ promise before.
 - **The worker's thread guard trips.** `check_same_thread` is left on, and the test proves
   the guard is armed by deliberately tripping it — the only way to know the discipline is
   enforced rather than merely intended.
-- **The credential corpus.** Tune the heuristic so both halves pass; never by deleting an
-  entry. A false positive blocks a legitimate memory and there is no override.
+- **The credential cases, both halves.** The shapes that must be refused — assembled from
+  parts, so the test file itself never contains a string a secret scanner would flag — and
+  the ones that must be accepted: ordinary prose, and a long repetitive run that trips the
+  length pattern and nothing else. Tune the heuristic so both halves still pass, never by
+  deleting a case: a false positive blocks a legitimate memory and there is no override.
 
 ## Running less than everything
 
