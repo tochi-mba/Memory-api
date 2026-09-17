@@ -226,8 +226,13 @@ class TestTheSingleMemoryRoutes:
         self, client: AsyncClient
     ) -> None:
         memory = await write(client, title="Allergy", body="Reported", trust="untrusted")
+        absent = await client.get("/v1/memory/search?q=Allergy", headers=bearer())
+        assert absent.json()["data"] == [], "unusable until somebody vouches for it"
+
         confirmed = await client.post(f"/v1/memory/{memory['id']}/confirm", headers=bearer())
-        assert confirmed.json()["trust"] == "stated"
+        assert confirmed.json()["confirmed_at"] is not None
+        assert confirmed.json()["trust"] == "untrusted", "still says where it came from"
+
         found = await client.get("/v1/memory/search?q=Allergy", headers=bearer())
         assert len(found.json()["data"]) == 1
 

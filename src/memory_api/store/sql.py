@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import secrets
 import sqlite3
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from memory_api.domain import topics as topic_rules
@@ -95,27 +97,47 @@ CREATE TABLE IF NOT EXISTS topics (
 CREATE UNIQUE INDEX IF NOT EXISTS topic_key ON topics(account_id, IFNULL(profile,''), key);
 """
 
+VOUCHED_FOR = "(m.trust<>'untrusted' OR m.confirmed_at IS NOT NULL)"
+"""What makes a memory usable: it did not come from somewhere anyone could write, or
+somebody has since said it is right. Retrieval and the topic index must agree on this,
+because a topic reaching the index puts its title into a prompt, and a title is exactly
+what an attacker who can write a page would like to choose."""
+
 # Every read of the index recomputes membership. See the docstring on `Topic` for why a
 # stored count is not good enough. The join is inner on purpose: a topic whose memories
 # have all been forgotten or superseded stops existing, rather than lingering as a title
 # with nothing behind it. The HAVING clause is the security boundary -- a topic made
 # entirely of untrusted memories never reaches the index, because its own title came from
 # the untrusted content and putting that in a prompt is the attack it is there to prevent.
-TOPIC_COLUMNS = """
+TOPIC_COLUMNS = (
+    """
  t.id, t.account_id, t.profile, t.key, t.title, t.summary, t.kind, t.first_seen,
  t.last_summarised_at, t.revision,
- SUM(CASE WHEN m.trust<>'untrusted' THEN 1 ELSE 0 END) AS memory_count,
- SUM(CASE WHEN m.trust='untrusted' THEN 1 ELSE 0 END) AS unconfirmed,
+ SUM(CASE WHEN """
+    + VOUCHED_FOR
+    + """ THEN 1 ELSE 0 END) AS memory_count,
+ SUM(CASE WHEN NOT """
+    + VOUCHED_FOR
+    + """ THEN 1 ELSE 0 END) AS unconfirmed,
  MAX(m.last_accessed_at) AS last_seen,
  MAX(m.importance) AS importance
 """
+)
 TOPIC_JOIN = """
  FROM topics t JOIN memories m
    ON m.topic_id=t.id AND m.forgotten_at IS NULL AND m.superseded_by_id IS NULL
 """
 TOPIC_HAVING = " GROUP BY t.id HAVING memory_count>0"
 
+DATABASE_FILE_MODE = 0o600
+SIDECARS = ("-wal", "-shm")
+
 HALF_LIFE_SECONDS = 30 * 86400
+"""How long until a memory's recency term is worth half what it was.
+
+A plain ``exp(-dt / tau)`` would make this an e-folding constant rather than a half-life,
+and the weight would halve at about twenty-one days instead of thirty. The name is the one
+people reason about, so the arithmetic below carries the ``ln 2`` that makes it true."""
 
 
 class SQLStore:
@@ -126,7 +148,27 @@ class SQLStore:
         # rows, and writing a row needs to know what time it is.
         self.clock = clock
         self.db.executescript(SCHEMA)
+        self._make_private(path)
         self._add_missing_columns()
+
+    @staticmethod
+    def _make_private(path: str) -> None:
+        """Let only the account running this process read the file, and its sidecars.
+
+        The content is a person's own words about themselves, which makes it at least as
+        sensitive as anything the siblings hold, and it was being created at whatever the
+        process umask happened to be. Applied after opening rather than before, because
+        there is nothing to change the mode of until SQLite has created the file.
+        """
+        if path == ":memory:":
+            return
+        database = Path(path)
+        sidecars = (database.with_name(database.name + suffix) for suffix in SIDECARS)
+        for candidate in (database, *sidecars):
+            # chmod is advisory on Windows and unsupported on some filesystems. Where it
+            # does nothing it is the operator's directory permissions that matter.
+            with contextlib.suppress(OSError, NotImplementedError):
+                candidate.chmod(DATABASE_FILE_MODE)
 
     def _add_missing_columns(self) -> None:
         """Bring an older database forward.
@@ -342,12 +384,13 @@ class SQLStore:
         if row is None:
             message = "Topic not found for this account."
             raise NotFoundError(message)
-        members = self.db.execute(
-            "SELECT * FROM memories WHERE account_id=? AND topic_id=? AND forgotten_at IS NULL "
-            "AND superseded_by_id IS NULL AND trust<>'untrusted' "
-            "ORDER BY last_accessed_at DESC LIMIT ?",
-            (account, topic_id, limit),
-        ).fetchall()
+        # VOUCHED_FOR is a module constant, never anything a caller can reach.
+        query = (
+            "SELECT * FROM memories AS m WHERE m.account_id=? AND m.topic_id=? "  # noqa: S608
+            f"AND m.forgotten_at IS NULL AND m.superseded_by_id IS NULL AND {VOUCHED_FOR} "
+            "ORDER BY last_accessed_at DESC LIMIT ?"
+        )
+        members = self.db.execute(query, (account, topic_id, limit)).fetchall()
         return TopicDetail(
             topic=Topic.model_validate(dict(row)),
             memories=[self._decode(member) for member in members],
@@ -412,8 +455,12 @@ class SQLStore:
         elif action == "restore":
             memory.forgotten_at = None
         else:
+            # Confirmation records that somebody vouched for the claim. It does not change
+            # where the claim came from, and overwriting `trust` here used to do exactly
+            # that: an inferred memory came back labelled as something the person stated.
+            # Retrieval gates on `confirmed_at` instead, so an untrusted memory still has to
+            # be vouched for before it is used, and still remembers that it was untrusted.
             memory.confirmed_at = now
-            memory.trust = "stated"
         memory.updated_at = now
         memory.revision += 1
         self._save(memory)
@@ -458,8 +505,18 @@ class SQLStore:
             clauses.append("valid_from<=? AND (valid_to IS NULL OR valid_to>?)")
             args.extend((at, at))
         if retrieval:
-            clauses.append("trust<>'untrusted' AND (expires_at IS NULL OR expires_at>?)")
-            clauses.append("(kind IN ('fact','procedure') OR (scope='session' AND session_id=?))")
+            # Untrusted until vouched for. Gating on `confirmed_at` rather than on trust
+            # keeps the provenance intact: see `_transition`.
+            clauses.append(
+                VOUCHED_FOR.replace("m.", "") + " AND (expires_at IS NULL OR expires_at>?)"
+            )
+            # A summary is semantic memory -- it is what a consolidation pass produces --
+            # so it crosses sessions like a fact does. An episode does not: "we talked
+            # about tour dates on Tuesday" is a thing that happened, not a thing that is
+            # the case, and surfacing it three weeks later is noise.
+            clauses.append(
+                "(kind IN ('fact','procedure','summary') OR (scope='session' AND session_id=?))"
+            )
             args.extend((at, selection.session_id))
         if not selection.include_inferred:
             clauses.append("trust<>'inferred'")
@@ -481,6 +538,16 @@ class SQLStore:
     def listing(
         self, account: str, selection: Selection, *, retrieval: bool = False
     ) -> Page[Memory]:
+        if retrieval and (selection.after is not None or selection.before is not None):
+            # Cursors bound the query by insert order; retrieval then re-sorts by rank in
+            # Python. Combining them pages through one ordering while presenting another,
+            # which is worse than refusing: a caller would believe it had seen everything
+            # above a threshold when it had seen everything written after a row.
+            message = (
+                "Cursors page by write order and retrieval ranks by relevance. "
+                "Page with the listing view, or raise the limit here."
+            )
+            raise MemoryFault(message)
         where, args = self._where(account, selection, retrieval=retrieval)
         scores: dict[str, float] = {}
         if selection.q is not None:
@@ -527,7 +594,11 @@ class SQLStore:
         components = [
             [
                 scores.get(memory.id, 0),
-                math.exp(-max(0, self.clock() - memory.last_accessed_at) / HALF_LIFE_SECONDS),
+                math.exp(
+                    -math.log(2)
+                    * max(0, self.clock() - memory.last_accessed_at)
+                    / HALF_LIFE_SECONDS
+                ),
                 memory.importance / 10,
             ]
             for memory in memories
@@ -580,12 +651,26 @@ class SQLStore:
             self._event(account, "block_delete", None)
 
     def forget_all(self, account: str) -> int:
+        """Forget everything, and report how many memories were still current.
+
+        The count excludes rows that had already been superseded by a correction. They are
+        forgotten too, but they were history rather than something the assistant still
+        believed, and counting them would tell a person they had far more remembered about
+        them than they did.
+        """
         with self.db:
-            changed = self.db.execute(
+            now = self.clock()
+            current = self.db.execute(
+                "SELECT COUNT(*) FROM memories WHERE account_id=? AND forgotten_at IS NULL "
+                "AND superseded_by_id IS NULL",
+                (account,),
+            ).fetchone()[0]
+            self.db.execute(
                 "UPDATE memories SET forgotten_at=?,updated_at=?,revision=revision+1 "
                 "WHERE account_id=? AND forgotten_at IS NULL",
-                (self.clock(), self.clock(), account),
-            ).rowcount
+                (now, now, account),
+            )
+            changed = int(current)
             self.db.execute("DELETE FROM memory_blocks WHERE account_id=?", (account,))
             self._event(account, "forget_all", None)
             return changed

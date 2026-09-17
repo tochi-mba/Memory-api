@@ -101,7 +101,7 @@ async def create_memory(request: MemoryInput, caller: CurrentCallerDep, store: S
     operation_id="list_memories",
     summary="List everything held, with its provenance",
     response_model=Page[Memory],
-    responses=_VALIDATED,
+    responses=_ADDRESSED,
     description=(
         "The audit view: every memory, with where it came from, who asserted it, what it "
         "superseded and when it stops being true. Use `include_forgotten` and "
@@ -124,7 +124,7 @@ async def list_memories(
     operation_id="search_memories",
     summary="Retrieve what is worth putting in front of the model",
     response_model=Page[Memory],
-    responses=_VALIDATED,
+    responses=_ADDRESSED,
     description=(
         "The retrieval view, ranked by relevance, recency and importance together. Pass `q` "
         "for keyword search; omit it to get the most relevant memories for the current "

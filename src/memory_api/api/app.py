@@ -13,6 +13,7 @@ from memory_api.api.middleware import RequestContextMiddleware
 from memory_api.api.routers import ROUTERS
 from memory_api.core.config import Settings, load_settings
 from memory_api.core.container import build_container
+from memory_api.core.sweeper import start_sweeper, stop_sweeper
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -35,9 +36,17 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         container = build_container(resolved, transport=transport)
         app.state.container = container
+        # Erasure is a background job, not a request. See `core.sweeper` for why running it
+        # at all is the difference between the route descriptions being true and not.
+        sweeper = start_sweeper(
+            container.store,
+            grace_seconds=resolved.forget_grace_seconds,
+            interval_seconds=resolved.sweep_interval_seconds,
+        )
         try:
             yield
         finally:
+            await stop_sweeper(sweeper)
             await container.aclose()
 
     app = FastAPI(

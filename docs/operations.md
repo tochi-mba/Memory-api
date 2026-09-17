@@ -127,6 +127,8 @@ This service verifies keyring's tokens locally and never calls keyring at reques
 | `MEMORY_KEYRING_JWKS_URL` | `http://127.0.0.1:8001/.well-known/jwks.json` | Where keyring publishes its public keys. Must be reachable from this process. |
 | `MEMORY_KEYRING_ISSUER` | `http://127.0.0.1:8001` | Pinned against the token's `iss`. Must equal keyring's `KEYRING_ISSUER` exactly, or every token is refused, identically and unhelpfully. |
 | `MEMORY_AUDIENCE` | `memory-api` | Pinned against the token's `aud`, exactly. Must be non-empty, carry no surrounding whitespace and contain **no dot** — a dotted audience is an audience *family*, and this service has no compartments. Anything else is a startup error. |
+| `MEMORY_FORGET_GRACE_SECONDS` | `2592000` (30 days) | How long a forgotten memory can still be restored before it is erased for good. |
+| `MEMORY_SWEEP_INTERVAL_SECONDS` | `3600` | How often erasure runs. `0` turns it off, which is a choice an operator may need to make; it is not a default. |
 | `MEMORY_JWKS_CACHE_SECONDS` | `3600` | How long keys are held before being read again. |
 | `MEMORY_JWKS_MIN_REFETCH_SECONDS` | `30` | Floor between the refetches an unknown key id may provoke. Not a tuning knob: without it a stream of tokens with random `kid`s is an outbound-fetch amplifier pointed at keyring. |
 | `MEMORY_KEYRING_TIMEOUT_SECONDS` | `5` | Per fetch of the key document. |
@@ -134,9 +136,7 @@ This service verifies keyring's tokens locally and never calls keyring at reques
 ### Deliberate absences
 
 There is no setting that disables token verification, none that lets one account read
-another's memories, and none that turns off the credential refusal. There is also **no
-setting for the erasure grace period** — see below; the sweep takes it as an argument
-because nothing in this release schedules the sweep.
+another's memories, and none that turns off the credential refusal.
 
 ## The database file, and what is in it
 
@@ -205,23 +205,21 @@ has four steps, and each exists because the one before it is not enough:
    pages are overwritten rather than merely unlinked. Without step 4, "erased" means "not in
    the table", which is not what anybody asking for erasure meant.
 
-**This release ships no scheduler and no route that calls the sweep.** It is a store
-operation, and the grace period is its argument rather than a setting, so until something
-schedules it, erasure is something an operator runs — with the service stopped, because the
-running process expects to be the only writer:
+**The service sweeps itself.** A background task runs every
+`MEMORY_SWEEP_INTERVAL_SECONDS` for the life of the process and erases everything past
+`MEMORY_FORGET_GRACE_SECONDS`. It sleeps before its first pass, so a process that is
+crash-looping cannot turn restarts into faster deletion, and a pass that fails — a locked
+database, a disk briefly full — does not stop the next one.
 
-```bash
-uv run python - <<'PY'
-from memory_api.store.sql import SQLStore
+Two things to know when running more than one process against one database. Set
+`MEMORY_SWEEP_INTERVAL_SECONDS=0` on all but one of them: the work is idempotent, so
+duplicate sweeping is wasteful rather than wrong, but there is no reason to pay for it. And
+a failed pass is currently **silent**, because this service has no logging module yet; if
+you depend on the timing of an erasure, watch the row count rather than the absence of an
+alert.
 
-store = SQLStore("var/memory.db")
-print("erased:", store.sweep(grace_seconds=7 * 86400))
-store.close()
-PY
-```
-
-Run it on a schedule you can state to the person whose memories they are. A grace period
-nobody can name is not a grace period.
+Whatever interval you choose, state it to the people whose memories these are. A grace
+period nobody can name is not a grace period.
 
 **There is no operator path into somebody's memories**, and that is the point. If an account
 is gone from keyring and nobody can mint a token for it, its rows are unreachable through

@@ -58,6 +58,23 @@ class Settings(BaseSettings):
     quietly start sharing one.
     """
 
+    forget_grace_seconds: PositiveFloat = 30 * 86_400.0
+    """How long a forgotten memory can still be restored before it is erased for good.
+
+    Long enough that somebody who forgot the wrong thing has a month to notice, short
+    enough that "forget this" means something. It is the operator's call, not the person's:
+    a per-memory grace period would be one more thing to get wrong in the moment somebody
+    is trying to delete something.
+    """
+
+    sweep_interval_seconds: float = 3_600.0
+    """How often to erase what is past its grace period. Zero turns sweeping off.
+
+    Off is a legitimate choice -- a deployment may erase on its own schedule, and one that
+    runs two processes against one database wants exactly one of them doing it -- but it
+    has to be chosen, because the route descriptions promise that erasure happens.
+    """
+
     keyring_jwks_url: str = "http://127.0.0.1:8001/.well-known/jwks.json"
     keyring_issuer: str = "http://127.0.0.1:8001"
     audience: str = "memory-api"

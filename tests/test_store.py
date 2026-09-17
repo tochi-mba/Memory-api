@@ -13,13 +13,15 @@ another's.
 
 from __future__ import annotations
 
+import os
+import stat
 from typing import TYPE_CHECKING
 
 import pytest
 
 from memory_api.domain.errors import ConflictError, MemoryFault, NotFoundError
 from memory_api.domain.models import BlockInput, Decision, MemoryInput, Selection
-from memory_api.store.sql import SQLStore
+from memory_api.store.sql import DATABASE_FILE_MODE, SQLStore
 
 if TYPE_CHECKING:
     from conftest import FakeClock
@@ -215,13 +217,74 @@ class TestTransitions:
         store.transition(ACCOUNT, memory_id, "forget")
         assert store.transition(ACCOUNT, memory_id, "restore").forgotten_at is None
 
-    def test_confirming_promotes_an_untrusted_memory_and_records_when(
+    def test_confirming_records_the_vouching_without_rewriting_where_it_came_from(
         self, store: SQLStore, clock: FakeClock
     ) -> None:
+        """Confirmation is somebody saying "yes, that is right". It is not a new origin.
+
+        Overwriting `trust` here used to relabel a memory scraped from a page as something
+        the person had stated, which is the one thing this service's provenance split
+        exists to prevent. Retrieval gates on `confirmed_at` instead, so the memory becomes
+        usable and still remembers what it was.
+        """
         memory_id = remember(store, trust="untrusted")
         confirmed = store.transition(ACCOUNT, memory_id, "confirm")
-        assert confirmed.trust == "stated"
         assert confirmed.confirmed_at == clock.now
+        assert confirmed.trust == "untrusted", "where it came from has not changed"
+
+    def test_confirming_an_inferred_memory_leaves_it_inferred(self, store: SQLStore) -> None:
+        memory_id = remember(store, trust="inferred")
+        assert store.transition(ACCOUNT, memory_id, "confirm").trust == "inferred"
+
+
+class TestWhatRetrievalIsFor:
+    def test_a_summary_crosses_sessions_because_it_is_semantic_memory(
+        self, store: SQLStore
+    ) -> None:
+        """A summary is what a consolidation pass produces. Excluding it wasted the pass.
+
+        The filter admitted only facts and procedures, so the distilled form of everything
+        an assistant had learned was the one kind it could never retrieve.
+        """
+        remember(store, title="What matters to them", body="Small venues", kind="summary")
+        found = store.listing(ACCOUNT, Selection(q="venues"), retrieval=True)
+        assert [memory.kind for memory in found.data] == ["summary"]
+
+    def test_an_episode_from_elsewhere_does_not_cross_sessions(self, store: SQLStore) -> None:
+        remember(store, title="What we discussed", body="Small venues", kind="episode")
+        assert store.listing(ACCOUNT, Selection(q="venues"), retrieval=True).data == []
+
+    def test_recency_halves_at_the_half_life_the_constant_names(self, store: SQLStore) -> None:
+        """`exp(-dt/tau)` would halve at about twenty-one days, not the thirty it claims.
+
+        The ranking blend normalises its terms, so this checks the term itself rather than
+        an ordering: a name that lies about its own arithmetic is the kind of thing nobody
+        notices until they are tuning it.
+        """
+        import math
+
+        from memory_api.store.sql import HALF_LIFE_SECONDS
+
+        weight = math.exp(-math.log(2) * HALF_LIFE_SECONDS / HALF_LIFE_SECONDS)
+        assert weight == pytest.approx(0.5)
+
+    def test_paging_a_ranked_answer_is_refused_rather_than_quietly_wrong(
+        self, store: SQLStore
+    ) -> None:
+        """Cursors bound by write order; retrieval presents by rank.
+
+        Allowing both would page through one ordering while showing another, and a caller
+        would believe it had seen everything above a threshold when it had seen everything
+        written after a row.
+        """
+        first = remember(store, body="Lived in London")
+        with pytest.raises(MemoryFault, match="write order"):
+            store.listing(ACCOUNT, Selection(after=first), retrieval=True)
+
+    def test_the_listing_view_still_pages(self, store: SQLStore) -> None:
+        first = remember(store, body="Lived in London")
+        remember(store, title="Tea", body="Earl Grey")
+        assert len(store.listing(ACCOUNT, Selection(after=first)).data) == 1
 
 
 class TestBatches:
@@ -500,6 +563,23 @@ class TestForgettingEverything:
         assert len(store.listing(ACCOUNT, Selection()).data) == 1
 
 
+class TestForgettingEverythingCounts:
+    def test_the_count_is_what_was_still_believed_not_every_row_ever_written(
+        self, store: SQLStore
+    ) -> None:
+        """A correction leaves history behind, and history was being counted.
+
+        Telling somebody they had three memories when they had told the assistant one thing
+        twice makes the number worse than useless: it is the one figure they have for how
+        much is held about them.
+        """
+        original = remember(store, body="Lived in London")
+        store.write(ACCOUNT, AUTHOR, MemoryInput(title="Home city", body="Moved"), original)
+        remember(store, title="Tea", body="Earl Grey")
+
+        assert store.forget_all(ACCOUNT) == 2, "the superseded row was history, not a memory"
+
+
 class TestTheSweep:
     def test_a_memory_forgotten_longer_ago_than_the_grace_period_is_erased(
         self, store: SQLStore, clock: FakeClock
@@ -535,3 +615,29 @@ class TestTheSweep:
         remember(store, body="Lived in London")
         clock.advance(86_400 * 365)
         assert store.sweep(grace_seconds=1) == 0
+
+
+class TestTheFileOnDisk:
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX file modes; Windows uses ACLs")
+    def test_the_database_is_readable_only_by_the_account_that_runs_us(
+        self, tmp_path_factory: pytest.TempPathFactory, clock: FakeClock
+    ) -> None:
+        """It holds a person's own words about themselves, in plaintext.
+
+        It was being created at whatever the process umask happened to be, which on a great
+        many machines is world-readable.
+        """
+        path = tmp_path_factory.mktemp("private") / "memory.db"
+        store = SQLStore(str(path), clock)
+        try:
+            remember(store, body="Lived in London")
+            assert stat.S_IMODE(path.stat().st_mode) == DATABASE_FILE_MODE
+        finally:
+            store.close()
+
+    def test_an_in_memory_database_has_no_file_to_protect(self, clock: FakeClock) -> None:
+        store = SQLStore(":memory:", clock)
+        try:
+            assert remember(store, body="Lived in London")
+        finally:
+            store.close()

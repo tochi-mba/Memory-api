@@ -29,8 +29,9 @@ All notable changes to memory-api are recorded here. The format follows
   frequently used fact is not evicted by yesterday's one-off.
 - **A write-time secret refusal.** Credential-shaped input is rejected with a message
   naming keyring, and the failure never echoes what was submitted.
-- **Erasure that erases.** A grace period, a sweeper, and a WAL truncate so that deleted
-  text does not linger in checkpointed journal pages.
+- **Erasure that erases.** A grace period, a background sweep that actually runs, and a
+  WAL truncate so deleted text does not linger in checkpointed journal pages.
+  `MEMORY_FORGET_GRACE_SECONDS` and `MEMORY_SWEEP_INTERVAL_SECONDS` configure it.
 - RFC 9457 `application/problem+json` errors with a `request_id` in the body and
   `X-Request-ID` on the response.
 - **A store that cannot block the event loop.** `StoreWorker` runs every SQLite call on one
@@ -42,6 +43,24 @@ All notable changes to memory-api are recorded here. The format follows
 
 ### Changed
 
+- **Confirming a memory no longer rewrites its provenance.** `confirm_memory` used to set
+  `trust` to `stated` whatever it had been, so an untrusted claim scraped from a page came
+  back labelled as something the person had said, and an inferred memory was relabelled as
+  a statement. It now records `confirmed_at` and leaves `trust` alone; retrieval and the
+  topic index gate on the confirmation instead, so an untrusted memory still has to be
+  vouched for before it is used and still remembers what it was.
+- **`summary` memories are retrievable.** The retrieval filter admitted only `fact` and
+  `procedure`, so the distilled output of a consolidation pass was the one kind that could
+  never be read back. An account-scoped `episode` is still excluded, which was the intent.
+- **Cursors are refused on the retrieval view** rather than silently paging by write order
+  while presenting by rank. Page with the listing view.
+- **`forget_all_memories` counts what was still believed**, not every row ever written. It
+  was including superseded history, which is the one figure a person has for how much is
+  held about them.
+- The recency term now halves at `HALF_LIFE_SECONDS` rather than at about seven tenths of
+  it. The constant was being used as an e-folding time while being named a half-life.
+- The database file and its `-wal`/`-shm` sidecars are created `0600`. They were taking
+  whatever the process umask gave them, which on many machines is world-readable.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,
