@@ -12,17 +12,20 @@ from memory_api.api.errors import register_exception_handlers
 from memory_api.api.middleware import RequestContextMiddleware
 from memory_api.api.routers import ROUTERS
 from memory_api.core.config import Settings, load_settings
+from memory_api.core.consolidator import start_consolidator, stop_consolidator
 from memory_api.core.container import build_container
 from memory_api.core.sweeper import start_sweeper, stop_sweeper
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
+
+    from httpx import AsyncBaseTransport
 
 
 def create_app(
     settings: Settings | None = None,
     *,
-    transport: object | None = None,
+    transport: AsyncBaseTransport | None = None,
 ) -> FastAPI:
     """Build the application.
 
@@ -33,7 +36,7 @@ def create_app(
     resolved = settings if settings is not None else load_settings()
 
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         container = build_container(resolved, transport=transport)
         app.state.container = container
         # Erasure is a background job, not a request. See `core.sweeper` for why running it
@@ -43,9 +46,15 @@ def create_app(
             grace_seconds=resolved.forget_grace_seconds,
             interval_seconds=resolved.sweep_interval_seconds,
         )
+        consolidator = start_consolidator(
+            container.store,
+            idle_seconds=resolved.consolidate_idle_seconds,
+            interval_seconds=resolved.consolidate_interval_seconds,
+        )
         try:
             yield
         finally:
+            await stop_consolidator(consolidator)
             await stop_sweeper(sweeper)
             await container.aclose()
 

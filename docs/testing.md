@@ -37,11 +37,13 @@ built and closed exactly as it is in production, with `keyring_client.testing`'s
 serves a real JWKS document, and refuses a token minted for another audience exactly as
 keyring would. No network, and no `unittest.mock` anywhere in the suite.
 
-**`store`** holds a `SQLStore` directly. Behaviour like cursor paging, the ranking blend and
-the sweep is easier to pin one call at a time than through fifteen requests — and the store
-tests pass an account id explicitly, which is precisely what the HTTP layer never does.
-That is the seam being tested: the store will answer for any account, and it is the absence
-of any way to *say* an account over HTTP that keeps one person's memories out of another's.
+**`store`** holds a `SQLStore` directly. Behaviour like cursor paging, the ranking blend,
+the sweep and idle consolidation is easier to pin one call at a time than through fifteen
+requests — and the store tests pass an account id explicitly, which is precisely what the
+HTTP layer never does. That is the seam being tested: the store will answer for any
+account, and it is the absence of any way to *say* an account over HTTP that keeps one
+person's memories out of another's. The HTTP tests for `/v1/internal` drive the real app
+with a configured service token map.
 
 **`FakeClock`** is time the test moves by hand. Temporal reasoning is most of what this
 service does — what was true then, what is true now, what a correction replaced — and none

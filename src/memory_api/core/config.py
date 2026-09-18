@@ -6,11 +6,13 @@ the prefix are rejected rather than ignored.
 
 from __future__ import annotations
 
+import json
 import os
 from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Self
 
-from pydantic import Field, model_validator
+from keyring_client import check_service_token
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
@@ -75,6 +77,24 @@ class Settings(BaseSettings):
     has to be chosen, because the route descriptions promise that erasure happens.
     """
 
+    consolidate_idle_seconds: PositiveFloat = 30 * 86_400.0
+    """How long a memory must go unused before it may be merged into a topic summary.
+
+    Recency is last access, not creation: a fact retrieved yesterday is still live even if
+    it was written a year ago. Zero idle would rewrite everything the moment it was
+    written, which is noise rather than consolidation, and the store refuses that window.
+    """
+
+    consolidate_interval_seconds: float = 3_600.0
+    """How often the idle-merge pass runs. Zero turns it off."""
+
+    service_tokens: dict[str, str] = Field(default_factory=dict)
+    """Sibling service tokens admitted to ``/v1/internal``. Empty refuses every caller.
+
+    JSON object, ``{"lucy-api": "<32+ chars>"}``. The person's token still binds the
+    account; these only prove which service is asking.
+    """
+
     keyring_jwks_url: str = "http://127.0.0.1:8001/.well-known/jwks.json"
     keyring_issuer: str = "http://127.0.0.1:8001"
     audience: str = "memory-api"
@@ -89,6 +109,38 @@ class Settings(BaseSettings):
             msg = "MEMORY_AUDIENCE must be non-empty, trimmed, and contain no dot"
             raise ValueError(msg)
         return self
+
+    @field_validator("service_tokens", mode="before")
+    @classmethod
+    def _parse_service_tokens(cls, value: object) -> dict[str, str]:
+        if value is None or value == "":
+            return {}
+        parsed: object
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                message = "MEMORY_SERVICE_TOKENS must be a JSON object of name to token"
+                raise ValueError(message) from exc
+        elif isinstance(value, dict):
+            parsed = value
+        else:
+            message = "MEMORY_SERVICE_TOKENS must be a JSON object of name to token"
+            raise ValueError(message)  # noqa: TRY004
+        if not isinstance(parsed, dict):
+            message = "MEMORY_SERVICE_TOKENS must be a JSON object of name to token"
+            raise ValueError(message)  # noqa: TRY004
+        tokens: dict[str, str] = {}
+        for name, token in parsed.items():
+            if not isinstance(name, str) or not name or not isinstance(token, str):
+                message = "MEMORY_SERVICE_TOKENS keys and values must be non-empty strings"
+                raise ValueError(message)
+            check_service_token(token)
+            tokens[name] = token
+        if len(set(tokens.values())) != len(tokens):
+            message = "two services share a service token; each needs its own"
+            raise ValueError(message)
+        return tokens
 
 
 def check_for_unknown_env_vars(environ: Mapping[str, str] | None = None) -> None:

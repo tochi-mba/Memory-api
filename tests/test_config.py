@@ -7,7 +7,9 @@ from typing import Any
 
 import pytest
 from keyring_client.testing import ISSUER, JWKS_URL
+from pydantic import ValidationError
 
+from memory_api.auth.services import ServiceAuthenticator
 from memory_api.core.config import LogFormat, Settings, check_for_unknown_env_vars, load_settings
 
 
@@ -51,3 +53,39 @@ def test_load_settings_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = load_settings()
     assert isinstance(settings, Settings)
     assert settings.environment == "test"
+
+
+def test_service_tokens_parse_from_json() -> None:
+    token = "k" * 32
+    settings = _settings(service_tokens=f'{{"lucy-api": "{token}"}}')
+    assert settings.service_tokens == {"lucy-api": token}
+
+
+def test_an_empty_service_tokens_value_is_no_services() -> None:
+    assert _settings(service_tokens="").service_tokens == {}
+    assert _settings(service_tokens=None).service_tokens == {}
+
+
+def test_malformed_service_tokens_are_refused() -> None:
+    with pytest.raises(ValidationError, match="JSON object"):
+        _settings(service_tokens=["nope"])
+    with pytest.raises(ValidationError, match="JSON object"):
+        _settings(service_tokens="[1]")
+    with pytest.raises(ValidationError, match="non-empty strings"):
+        _settings(service_tokens={1: "k" * 32})
+    with pytest.raises(ValidationError, match="JSON object"):
+        _settings(service_tokens="{")
+    with pytest.raises(ValidationError, match="non-empty strings"):
+        _settings(service_tokens={"lucy-api": ["nope"]})
+    with pytest.raises(ValidationError, match="non-empty strings"):
+        _settings(service_tokens={"": "k" * 32})
+    with pytest.raises(ValidationError, match="at least"):
+        _settings(service_tokens={"lucy-api": "short"})
+    with pytest.raises(ValidationError, match="share"):
+        _settings(service_tokens={"lucy-api": "k" * 32, "other": "k" * 32})
+
+
+def test_configured_services_are_named() -> None:
+    token = "k" * 32
+    named = ServiceAuthenticator({"lucy-api": token})
+    assert named.configured == ("lucy-api",)

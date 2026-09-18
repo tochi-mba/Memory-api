@@ -117,6 +117,7 @@ time a model calls it for a bad reason".
 | --- | --- |
 | `list_memories` | Expose it only as "show *me* what you hold about me", answered to the person. It is the audit view: it includes untrusted claims and superseded history, and it is not what goes into a prompt. A model with both reads will reach for the one that returns more. |
 | `check_liveness`, `check_readiness` | Unauthenticated probes. A model has nothing to do with the answer, and a tool it cannot act on is a tool that gets called. |
+| every `internal_*` operation | These are how Lucy talks to this service. They take a service token. A model holding them can neither present that token nor be allowed to. |
 
 There is nothing that is dangerous to *other* people, because there is no administrative
 surface at all: every operation is scoped to the caller's own account by construction, and

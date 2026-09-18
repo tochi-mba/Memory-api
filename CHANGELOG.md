@@ -34,6 +34,13 @@ All notable changes to memory-api are recorded here. The format follows
   `MEMORY_FORGET_GRACE_SECONDS` and `MEMORY_SWEEP_INTERVAL_SECONDS` configure it.
 - RFC 9457 `application/problem+json` errors with a `request_id` in the body and
   `X-Request-ID` on the response.
+- **A two-credential `/v1/internal` surface.** A sibling presents its own token and the
+  person's memory-api token. The account still comes from the person. Empty
+  `MEMORY_SERVICE_TOKENS` refuses every caller. `operation_id`s are prefixed `internal_`
+  so they are never MCP tool names.
+- **Idle consolidation.** A background pass merges unused current facts in one topic into
+  a `summary` row and supersedes the originals. `MEMORY_CONSOLIDATE_IDLE_SECONDS` and
+  `MEMORY_CONSOLIDATE_INTERVAL_SECONDS` configure it.
 - **A store that cannot block the event loop.** `StoreWorker` runs every SQLite call on one
   dedicated thread that owns the connection and constructs it there. `check_same_thread`
   stays on deliberately: it is what turns "we are careful about threads" into something a

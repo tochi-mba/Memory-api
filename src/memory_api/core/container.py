@@ -8,10 +8,13 @@ from typing import TYPE_CHECKING
 
 from keyring_client import JwksClient, SystemClock
 
+from memory_api.auth.services import ServiceAuthenticator
 from memory_api.auth.verifier import TokenVerifier
 from memory_api.store.worker import StoreWorker
 
 if TYPE_CHECKING:
+    import httpx
+
     from memory_api.core.config import Settings
 
 
@@ -22,6 +25,7 @@ class Container:
     settings: Settings
     jwks: JwksClient
     verifier: TokenVerifier
+    services: ServiceAuthenticator
     store: StoreWorker
     started_at: float = field(default_factory=time.monotonic)
 
@@ -42,7 +46,9 @@ class Container:
             await self.store.aclose()
 
 
-def build_container(settings: Settings, *, transport: object | None = None) -> Container:
+def build_container(
+    settings: Settings, *, transport: httpx.AsyncBaseTransport | None = None
+) -> Container:
     """Assemble JWKS client, verifier and store worker. No network I/O yet.
 
     The worker opens its connection on its own thread as soon as it is constructed, so a
@@ -55,7 +61,7 @@ def build_container(settings: Settings, *, transport: object | None = None) -> C
         cache_seconds=settings.jwks_cache_seconds,
         min_refetch_seconds=settings.jwks_min_refetch_seconds,
         timeout_seconds=settings.keyring_timeout_seconds,
-        transport=transport,  # type: ignore[arg-type]
+        transport=transport,
     )
     verifier = TokenVerifier(
         jwks=jwks,
@@ -67,5 +73,6 @@ def build_container(settings: Settings, *, transport: object | None = None) -> C
         settings=settings,
         jwks=jwks,
         verifier=verifier,
+        services=ServiceAuthenticator(settings.service_tokens),
         store=StoreWorker(settings.database_path),
     )

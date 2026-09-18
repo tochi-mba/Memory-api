@@ -17,10 +17,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import Depends, Query, Request
+from fastapi import Depends, Header, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from memory_api.auth.verifier import AuthenticationError, VerifiedCaller
+from memory_api.auth.services import ServiceCaller
+from memory_api.auth.verifier import TOKEN_REFUSED, AuthenticationError, VerifiedCaller
 from memory_api.core.container import Container
 from memory_api.domain.models import Selection
 from memory_api.store.worker import StoreWorker
@@ -28,6 +29,7 @@ from memory_api.store.worker import StoreWorker
 bearer_scheme = HTTPBearer(auto_error=False)
 
 MISSING_CREDENTIALS = "a keyring token is required"
+USER_TOKEN_HEADER = "X-Keyring-User-Token"  # noqa: S105
 
 
 def get_container(request: Request) -> Container:
@@ -56,6 +58,29 @@ async def get_current_caller(
 
 CurrentCallerDep = Annotated[VerifiedCaller, Depends(get_current_caller)]
 
+
+async def get_service_caller(
+    container: ContainerDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
+    user_token: Annotated[str | None, Header(alias=USER_TOKEN_HEADER)] = None,
+) -> ServiceCaller:
+    """A registered service acting for the person named by the second credential.
+
+    The account still comes from the person's token. The service token only proves the
+    caller is a sibling this deployment is willing to talk to, so a stolen person token
+    cannot use this path and a service cannot name who it is asking about.
+    """
+    if credentials is None:
+        raise AuthenticationError(TOKEN_REFUSED)
+    service = container.services.identify(credentials.credentials)
+    if user_token is None or not user_token.strip():
+        raise AuthenticationError(TOKEN_REFUSED)
+    person = await container.verifier.verify(user_token)
+    return ServiceCaller(account_id=person.account_id, audience=person.audience, service=service)
+
+
+ServiceCallerDep = Annotated[ServiceCaller, Depends(get_service_caller)]
+
 SelectionDep = Annotated[Selection, Query()]
 """Every list and search filter, as query parameters, from the model the store reads.
 
@@ -64,7 +89,7 @@ rather than a filter that silently did not apply -- which on this surface is the
 between "these are all your memories" and "these are the ones that got through a typo"."""
 
 
-def asserted_by(caller: VerifiedCaller) -> str:
+def asserted_by(caller: VerifiedCaller | ServiceCaller) -> str:
     """Who the service *knows* made this assertion.
 
     Not to be confused with ``source``, which travels in the request body and is a claim:
@@ -72,9 +97,7 @@ def asserted_by(caller: VerifiedCaller) -> str:
     subject of a signature keyring checked. A caller can write ``source: "the doctor"``; it
     cannot write who it is.
 
-    Today a token only ever names a person, so this is their account id. It is a function
-    rather than an inlined attribute because when service tokens arrive, and a memory can
-    be asserted by something other than the person it is about, this is the one line that
-    has to change.
+    On the person-facing surface this is their account id. On the internal surface it is
+    the configured service name: the person authorised the call, the service made it.
     """
-    return caller.account_id
+    return caller.account_id if not isinstance(caller, ServiceCaller) else caller.service

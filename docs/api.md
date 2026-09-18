@@ -1,7 +1,8 @@
 # The HTTP API
 
-Twenty-one operations. Every one is shaped as a tool call, because that is what it will
-become — one operation, one clear name, arguments a model can fill without reading prose.
+Twenty-one person-facing operations, plus ten sibling-facing `internal_*` operations. The
+person-facing set is shaped as tool calls. The internal set is not: a model is never given
+those names.
 
 `operation_id`s are **public contract**: they become MCP tool names, so renaming one breaks
 every client with a tool bound to it. `tests/test_contract.py` pins the exact set as a set,
@@ -61,6 +62,41 @@ Two failures worth telling apart:
 | POST | `/v1/memory/{memory_id}/restore` | `restore_memory` | 200 |
 | DELETE | `/v1/memory/{memory_id}` | `delete_memory` | 204 |
 
+These ten are the sibling-service surface. They take two credentials and a model is never
+given them. The account still comes from the person's token.
+
+| Method | Path | operation_id | Success |
+| --- | --- | --- | --- |
+| POST | `/v1/internal/memory` | `internal_create_memory` | 201 |
+| GET | `/v1/internal/memory` | `internal_list_memories` | 200 |
+| GET | `/v1/internal/memory/search` | `internal_search_memories` | 200 |
+| GET | `/v1/internal/memory/blocks` | `internal_list_memory_blocks` | 200 |
+| GET | `/v1/internal/memory/topics` | `internal_list_memory_topics` | 200 |
+| GET | `/v1/internal/memory/topics/{topic_id}` | `internal_get_memory_topic` | 200 |
+| GET | `/v1/internal/memory/{memory_id}` | `internal_get_memory` | 200 |
+| POST | `/v1/internal/memory/{memory_id}/correct` | `internal_correct_memory` | 201 |
+| POST | `/v1/internal/memory/{memory_id}/confirm` | `internal_confirm_memory` | 200 |
+| POST | `/v1/internal/memory/{memory_id}/forget` | `internal_forget_memory` | 200 |
+
+## Authenticating as a sibling
+
+`/v1/internal/*` is for another service in the family, typically Lucy, not for a person
+and not for a model. It takes **two** credentials:
+
+```
+Authorization: Bearer <this service's MEMORY_SERVICE_TOKENS entry>
+X-Keyring-User-Token: <the person's memory-api JWT>
+```
+
+The person's token still has `aud=memory-api`. The account still comes from that token's
+`sub`. The service token only proves the caller is a sibling this deployment is willing
+to talk to. Empty `MEMORY_SERVICE_TOKENS` refuses every internal call. A stolen person
+token without the service credential cannot use this path; a service cannot name an
+account.
+
+`asserted_by` on a memory written here is the configured service name, not the person.
+That is provenance: the person authorised the call, the service made it.
+
 ## The two views of the same rows
 
 `list_memories` and `search_memories` read the same table and are deliberately separate
@@ -80,7 +116,7 @@ filters apply that the audit view does not:
 | Forgotten memories | `include_forgotten` is ignored here. |
 | Superseded versions | A correction wins over what it corrected. `include_history` is ignored here. |
 | Expired memories | `expires_at` in the past. |
-| Anything but `fact` and `procedure` | Unless the memory is session-scoped and belongs to the `session_id` you asked with. So an `episode` or a `summary` carried at account scope is never retrieved; a session's own episodes are, within that session. |
+| Anything but `fact`, `procedure` and `summary` | Unless the memory is session-scoped and belongs to the `session_id` you asked with. A `summary` is what consolidation writes and is retrieved like a fact. An `episode` is not: it is a thing that happened, not a thing that is the case. |
 | Other profiles and other sessions | Retrieval always narrows to account-wide memories plus the named `profile`'s. With no `profile` parameter you get account-scope memories only. |
 
 Results come back **ranked**, not ordered, and retrieval **writes**: every memory it

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from memory_api.domain import topics as topic_rules
-from memory_api.domain.errors import ConflictError, MemoryFault, NotFoundError
+from memory_api.domain.errors import ConflictError, MemoryFault, NotFoundError, SecretError
 from memory_api.domain.models import (
     Block,
     BlockInput,
@@ -133,6 +133,8 @@ DATABASE_FILE_MODE = 0o600
 SIDECARS = ("-wal", "-shm")
 
 HALF_LIFE_SECONDS = 30 * 86400
+MIN_MERGE = 2
+"""A lone idle memory is left alone; merging one fact into a summary of itself is noise."""
 """How long until a memory's recency term is worth half what it was.
 
 A plain ``exp(-dt / tau)`` would make this an e-folding constant rather than a half-life,
@@ -693,3 +695,75 @@ class SQLStore:
         # A truncated WAL prevents erased plaintext remaining in checkpointed journal pages.
         self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         return len(rows)
+
+    def consolidate(self, idle_seconds: float) -> int:
+        """Merge idle current facts in one topic into a summary row.
+
+        Returns how many summary rows were written. A window of zero or less is a no-op:
+        rewriting everything the moment it is written is not consolidation, it is noise.
+        """
+        if idle_seconds <= 0:
+            return 0
+        cutoff = self.clock() - idle_seconds
+        rows = self.db.execute(
+            "SELECT * FROM memories WHERE forgotten_at IS NULL AND superseded_by_id IS NULL "
+            "AND last_accessed_at<=? AND trust<>'untrusted' "
+            "AND kind IN ('fact','procedure','summary') "
+            "ORDER BY account_id, topic_id, created_at, id",
+            (cutoff,),
+        ).fetchall()
+        groups: dict[tuple[str, str], list[Memory]] = {}
+        for row in rows:
+            memory = self._decode(row)
+            topic_id = memory.topic_id
+            if topic_id is None:
+                continue
+            groups.setdefault((memory.account_id, topic_id), []).append(memory)
+        written = 0
+        with self.db:
+            for (account, topic_id), members in groups.items():
+                if len(members) < MIN_MERGE:
+                    continue
+                if self._merge_topic(account, topic_id, members):
+                    written += 1
+        return written
+
+    def _merge_topic(self, account: str, topic_id: str, members: list[Memory]) -> bool:
+        """Write one summary and retire the members it replaces. False when the body is refused."""
+        now = self.clock()
+        title = members[0].title
+        body = topic_rules.clamp("; ".join(item.body for item in members if item.body), 16_000)
+        request = MemoryInput(
+            title=title,
+            body=body,
+            kind="summary",
+            source="consolidation",
+            trust="inferred",
+            importance=max(item.importance for item in members),
+            scope=members[0].scope,
+            profile=members[0].profile,
+            session_id=members[0].session_id,
+        )
+        try:
+            refuse_secrets(request.model_dump())
+        except SecretError:
+            return False
+        summary = self._write(account, "memory-api", request)
+        summary.topic_id = topic_id
+        self._save(summary)
+        for previous in members:
+            previous.valid_to = now
+            previous.superseded_by_id = summary.id
+            previous.updated_at = now
+            previous.revision += 1
+            self._save(previous)
+            self.db.execute(
+                "INSERT INTO memory_links VALUES(?,?,?,?)",
+                (account, summary.id, previous.id, "supersedes"),
+            )
+        self.db.execute(
+            "UPDATE topics SET summary=?, last_summarised_at=?, revision=revision+1 WHERE id=?",
+            (topic_rules.summarise(title, body), now, topic_id),
+        )
+        self._event(account, "consolidate", summary.id)
+        return True

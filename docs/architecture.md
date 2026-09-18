@@ -23,8 +23,9 @@ part of the service is testable by substitution.
 
 `api/schemas.py` and `domain/models.py` are separate on purpose. The domain models are what
 the store reads and writes; the schemas are the envelopes around them. The HTTP contract is
-public and its operation ids are MCP tool names, so it has to be able to grow a field
-without the storage layer having an opinion about it.
+public and its person-facing operation ids are MCP tool names, so it has to be able to grow
+a field without the storage layer having an opinion about it. The `/v1/internal` ids are
+prefixed `internal_` so they never become those names.
 
 ### The one import contract
 
@@ -46,9 +47,11 @@ the layering is held up by there being five packages you can read in an afternoo
    leaving it to Starlette's outer error middleware, because that one runs after the
    binding has unwound and the 500 it produces would carry no id. The id is the only thing
    a 500 body gives the caller, because the body deliberately says nothing else.
-2. **Dependencies** establish who is asking. `CurrentCallerDep` is the only way a route
-   learns whose memories it is touching. A missing bearer is this service's own
-   `AuthenticationError` and a problem-shaped 401, not FastAPI's default.
+2. **Dependencies** establish who is asking. `CurrentCallerDep` is the only way a
+   person-facing route learns whose memories it is touching. `ServiceCallerDep` is the
+   sibling path: a static service token plus the person's memory-api token in
+   `X-Keyring-User-Token`. A missing bearer is this service's own `AuthenticationError`
+   and a problem-shaped 401, not FastAPI's default.
 3. **`auth/`** verifies the token locally with `keyring_client` and turns the library's
    verdicts into this service's errors, so nothing above it knows a library was involved:
    every refusal is one identical 401, and keys that cannot be fetched are a 503.
@@ -239,6 +242,18 @@ fine. Naming a topic after it, and putting that name in front of the model every
 the attack. Confirming one member is enough to bring the topic in; the rest stay counted
 separately as `unconfirmed`.
 
+## Consolidation is ranking hygiene, not deletion
+
+A topic that keeps collecting facts nobody has needed is retrieval noise: the newest of
+them wins rather than the thing they all jointly say. A background pass groups current
+trusted facts, procedures and summaries in one topic whose last access is older than the
+configured idle window, writes one `kind=summary` row, and supersedes the originals. The
+audit view still has them. Untrusted rows are never merged, and a combined body that looks
+like a credential is skipped rather than stored.
+
+The pass sleeps first, like the sweeper, so a crash loop cannot rewrite history on every
+boot. An idle window of zero is refused by the store.
+
 ## Isolation is structural
 
 Every store method takes an `account_id` and it is not optional on any of them. Over HTTP
@@ -262,9 +277,9 @@ legitimate sentence is storing somebody's API key in plaintext for ever.
 
 ## What this service is not
 
-- **Not administrable.** There is no route that lists accounts, reads somebody else's
-  memories, or acts on a person's behalf. An operator with the database file has the rows;
-  an operator with the API has nothing.
+- **Not administrable.** There is no route that lists accounts or reads somebody else's
+  memories by naming them. A sibling may act on a person's behalf only while holding that
+  person's own token.
 - **Not multi-process.** One connection, one writer, one thread.
 - **Not encrypted.** The database holds a person's own words in plaintext. See
   [docs/operations.md](operations.md).

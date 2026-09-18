@@ -12,13 +12,13 @@ dependency.
 | Disk | one SQLite file plus its `-wal` and `-shm` sidecars |
 | Network, inbound | one port — **8009** in the family allocation — behind a TLS-terminating proxy |
 | Network, outbound | keyring's JWKS URL, and nothing else |
-| Secrets | **none** |
+| Secrets | none of its own; optional `MEMORY_SERVICE_TOKENS` admits siblings to `/v1/internal` |
 
-That last row is worth pausing on. memory-api holds no signing key, no admin token and no
-third-party credential. It verifies somebody else's signatures with a public key it fetches
-over HTTP, and it refuses to store anything that looks like a credential. What it does hold
-is a person's own words, which is a different kind of sensitive and is what the rest of this
-page is mostly about.
+That last row used to be simpler. memory-api still holds no signing key and no
+third-party credential, and it still refuses to store anything that looks like one. The
+optional service-token map is proof that a *sibling* is asking, not a secret about a
+person. What the database holds is a person's own words, which is a different kind of
+sensitive and is what the rest of this page is mostly about.
 
 ## Running it locally
 
@@ -50,8 +50,10 @@ curl -sH "Authorization: Bearer $TOKEN" 'http://127.0.0.1:8009/v1/memory/search?
 ```
 
 The audience must be exactly `MEMORY_AUDIENCE`. memory-api needs **no** entry in keyring's
-`KEYRING_SERVICE_TOKENS`: that list only admits services to keyring's internal endpoints,
-which this service never calls.
+`KEYRING_SERVICE_TOKENS` to verify person tokens: that list only admits services to
+keyring's internal endpoints, which this service never calls. To *accept* Lucy on
+`/v1/internal`, set `MEMORY_SERVICE_TOKENS` to a JSON object whose values are 32+ character
+tokens you also give Lucy.
 
 ## In compose
 
@@ -129,6 +131,9 @@ This service verifies keyring's tokens locally and never calls keyring at reques
 | `MEMORY_AUDIENCE` | `memory-api` | Pinned against the token's `aud`, exactly. Must be non-empty, carry no surrounding whitespace and contain **no dot** — a dotted audience is an audience *family*, and this service has no compartments. Anything else is a startup error. |
 | `MEMORY_FORGET_GRACE_SECONDS` | `2592000` (30 days) | How long a forgotten memory can still be restored before it is erased for good. |
 | `MEMORY_SWEEP_INTERVAL_SECONDS` | `3600` | How often erasure runs. `0` turns it off, which is a choice an operator may need to make; it is not a default. |
+| `MEMORY_CONSOLIDATE_IDLE_SECONDS` | `2592000` (30 days) | How long a memory must go unused (last access, not creation) before the idle-merge pass may fold it into a topic summary. |
+| `MEMORY_CONSOLIDATE_INTERVAL_SECONDS` | `3600` | How often that pass runs. `0` turns it off. |
+| `MEMORY_SERVICE_TOKENS` | empty | JSON object of sibling name to token, 32+ characters each. Empty refuses every `/v1/internal` call. Never a person token. |
 | `MEMORY_JWKS_CACHE_SECONDS` | `3600` | How long keys are held before being read again. |
 | `MEMORY_JWKS_MIN_REFETCH_SECONDS` | `30` | Floor between the refetches an unknown key id may provoke. Not a tuning knob: without it a stream of tokens with random `kid`s is an outbound-fetch amplifier pointed at keyring. |
 | `MEMORY_KEYRING_TIMEOUT_SECONDS` | `5` | Per fetch of the key document. |
@@ -220,6 +225,20 @@ alert.
 
 Whatever interval you choose, state it to the people whose memories these are. A grace
 period nobody can name is not a grace period.
+
+## Consolidation
+
+A topic that keeps collecting facts nobody has needed in a month is ranking noise. A
+background pass, on the same shape as the sweeper, groups current trusted facts,
+procedures and summaries in one topic whose `last_accessed_at` is older than
+`MEMORY_CONSOLIDATE_IDLE_SECONDS`. Groups of two or more become one `kind=summary` row
+(`source=consolidation`, `asserted_by=memory-api`); the originals are superseded, not
+deleted, so the audit view still has them.
+
+It sleeps before its first pass. A window of zero idle seconds is refused by the store:
+rewriting everything the moment it is written is not consolidation. Untrusted memories
+are never merged. A combined body that looks like a credential is skipped rather than
+stored.
 
 **There is no operator path into somebody's memories**, and that is the point. If an account
 is gone from keyring and nobody can mint a token for it, its rows are unreachable through

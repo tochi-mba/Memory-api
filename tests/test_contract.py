@@ -1,9 +1,9 @@
 """The HTTP contract, pinned.
 
-The twenty-one ``operation_id``s are MCP tool names: renaming one breaks every client with
-a tool bound to it, so they are checked as an exact set rather than a minimum. The
-structural assertions are the isolation invariant read off the generated schema rather than
-off a comment -- no path and no parameter anywhere names an account.
+The person-facing twenty-one ``operation_id``s are MCP tool names: renaming one breaks
+every client with a tool bound to it, so they are checked as an exact set rather than a
+minimum. The ``internal_*`` ids on ``/v1/internal`` are the sibling-service surface and are
+never given to a model; they are still pinned so a rename is visible.
 
 A schema test is cheap and catches the class of change nothing else does: a route added
 without an operation id, a body model that quietly stopped forbidding extra fields, a
@@ -18,7 +18,7 @@ import pytest
 
 from conftest import build_settings
 from memory_api.api.app import create_app
-from memory_api.api.routers import memory
+from memory_api.api.routers import internal, memory
 
 OPERATIONS = frozenset(
     {
@@ -43,6 +43,16 @@ OPERATIONS = frozenset(
         "forget_memory",
         "restore_memory",
         "delete_memory",
+        "internal_create_memory",
+        "internal_list_memories",
+        "internal_search_memories",
+        "internal_list_memory_blocks",
+        "internal_list_memory_topics",
+        "internal_get_memory_topic",
+        "internal_get_memory",
+        "internal_correct_memory",
+        "internal_confirm_memory",
+        "internal_forget_memory",
     }
 )
 
@@ -63,7 +73,7 @@ def operations(schema: dict[str, Any]) -> list[tuple[str, str, dict[str, Any]]]:
     ]
 
 
-def test_the_exact_set_of_twenty_one_operation_ids(schema: dict[str, Any]) -> None:
+def test_the_exact_set_of_operation_ids(schema: dict[str, Any]) -> None:
     found = {operation["operationId"] for _, _, operation in operations(schema)}
     assert found == OPERATIONS, (
         "operation_ids are MCP tool names and public API: renaming one breaks every "
@@ -110,6 +120,15 @@ class TestEveryOperation:
             "list_memory_topics": {"401", "422"},
             "get_memory_topic": {"401", "404", "422"},
             "update_memory_topic": {"401", "404", "422"},
+            "internal_create_memory": {"401", "422"},
+            "internal_list_memory_blocks": {"401", "422"},
+            "internal_search_memories": {"401", "404", "422"},
+            "internal_get_memory": {"401", "404", "422"},
+            "internal_correct_memory": {"401", "404", "409", "422"},
+            "internal_confirm_memory": {"401", "404", "422"},
+            "internal_forget_memory": {"401", "404", "422"},
+            "internal_list_memory_topics": {"401", "422"},
+            "internal_get_memory_topic": {"401", "404", "422"},
             "check_readiness": {"503"},
         }
         for _, _, operation in operations(schema):
@@ -186,3 +205,17 @@ def test_the_literal_paths_are_declared_before_the_parameterised_one() -> None:
 
     # And the block routes, which sit under `/blocks/{label}` rather than under `/{id}`.
     assert paths.index("/v1/memory/blocks") < paths.index("/v1/memory/blocks/{label}")
+
+
+def test_the_internal_literal_paths_are_declared_before_the_parameterised_one() -> None:
+    paths = [getattr(route, "path", "") for route in internal.router.routes]
+    swallower = paths.index("/v1/internal/memory/{memory_id}")
+    for literal in (
+        "/v1/internal/memory/search",
+        "/v1/internal/memory/blocks",
+        "/v1/internal/memory/topics",
+    ):
+        assert paths.index(literal) < swallower, literal
+    assert paths.index("/v1/internal/memory/topics") < paths.index(
+        "/v1/internal/memory/topics/{topic_id}"
+    )
