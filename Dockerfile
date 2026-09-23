@@ -35,12 +35,21 @@ RUN --mount=type=secret,id=github_token,required=false \
     fi \
     && uv sync --no-dev
 
-RUN useradd --create-home --uid 10001 hello \
-    && chown -R hello:hello /app
-USER hello
+# The data directory is created, owned and locked down *before* the volume is declared:
+# docker seeds a named volume from the image path, so the ownership set here is what the
+# volume gets. Without it the volume arrives root-owned, the unprivileged user cannot
+# create memory.db, and the service starts happily and then answers /ready with a
+# database OperationalError -- healthy to docker's healthcheck, useless to a caller.
+RUN useradd --create-home --uid 10001 memory \
+    && mkdir -p /var/lib/memory \
+    && chown -R memory:memory /var/lib/memory /app \
+    && chmod 700 /var/lib/memory
+VOLUME ["/var/lib/memory"]
+USER memory
 
 ENV MEMORY_HOST=0.0.0.0 \
     MEMORY_PORT=8009 \
+    MEMORY_DATABASE_PATH=/var/lib/memory/memory.db \
     MEMORY_LOG_FORMAT=json
 
 EXPOSE 8009
