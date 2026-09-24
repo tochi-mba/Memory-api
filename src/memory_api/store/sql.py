@@ -319,8 +319,38 @@ class SQLStore:
             )
         memory.topic_id = self._assign_topic(memory, previous)
         self._save(memory)
+        self._summarise_correction(memory)
         self._event(account, "add" if previous is None else "correct", memory.id)
         return memory
+
+    def _summarise_correction(self, memory: Memory) -> None:
+        """A usable correction rewrites its topic's line in the index.
+
+        The index is read before any topic is opened, and an assistant is told to believe it
+        over its own recollection. A summary written before a correction can say exactly what
+        the correction said was wrong: "Reviews the week on Friday afternoons" stood in the
+        index right after the person moved it to Thursday. So the line is rewritten from the
+        correction, and `last_summarised_at` cleared to say it is a placeholder again, whether
+        what it replaces was one or a summary a model wrote.
+
+        Only once the correction is usable. An untrusted one must not write the line a model
+        reads every turn, for the reason `VOUCHED_FOR` gives; confirming it is what rewrites
+        the line then. A correction that has itself been replaced or forgotten says nothing
+        about the topic any more.
+        """
+        current = memory.superseded_by_id is None and memory.forgotten_at is None
+        usable = memory.trust != "untrusted" or memory.confirmed_at is not None
+        if memory.supersedes_id is None or not (current and usable):
+            return
+        self.db.execute(
+            "UPDATE topics SET summary=?, last_summarised_at=NULL, revision=revision+1 "
+            "WHERE account_id=? AND id=?",
+            (
+                topic_rules.summarise(memory.title, memory.body),
+                memory.account_id,
+                memory.topic_id,
+            ),
+        )
 
     def _assign_topic(self, memory: Memory, previous: Memory | None) -> str:
         """Which topic this memory joins.
@@ -466,6 +496,8 @@ class SQLStore:
         memory.updated_at = now
         memory.revision += 1
         self._save(memory)
+        # Confirming or restoring a correction is what makes it usable; its guard decides.
+        self._summarise_correction(memory)
         self._event(account, action, memory_id)
         return memory
 
