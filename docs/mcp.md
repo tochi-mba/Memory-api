@@ -166,9 +166,9 @@ so an undescribed route cannot ship. Surface them verbatim.
 `valid_from`, `supersedes_id` and the timestamps come back on every memory, on every route
 that returns one — never as an optional expansion a caller has to remember to ask for.
 
-**Bounded payloads.** Every memory and topic list takes a `limit` of at most 100, the topic index reports an
-honest `total` so a model can say "showing 12 of 47" rather than assume it has everything,
-and blocks carry their own character limit.
+**Bounded payloads.** Every memory and topic list takes a `limit` of at most 100, the topic
+index reports an honest `total` so a model can say "showing 12 of 47" rather than assume it
+has everything, and blocks carry their own character limit.
 
 **An index worth carrying.** The split between `list_memory_topics` and `get_memory_topic`
 is what makes always-on memory affordable in a context window, and it is the single design

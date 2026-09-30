@@ -290,8 +290,8 @@ reach retrieval. A confirmed untrusted member counts in `memory_count` like any 
 
 A topic whose memories have all been forgotten or superseded disappears from the index
 rather than lingering as a title with nothing behind it, and **a topic made entirely of
-unconfirmed untrusted memories never appears at all** — its title was written from content somebody
-else supplied, and the title is the part that reaches the prompt.
+unconfirmed untrusted memories never appears at all** — its title was written from content
+somebody else supplied, and the title is the part that reaches the prompt.
 
 `GET /v1/memory/topics/{topic_id}` expands one: the topic plus its memories, most recently
 used first, unconfirmed untrusted members left out, `limit` 1–100 (default 50). A topic
@@ -300,17 +300,20 @@ with nothing current and usable behind it answers 404.
 `PATCH /v1/memory/topics/{topic_id}` is what a summarising pass, typically a model reading
 the expanded topic, writes back: `title`, `summary`, or both, and it stamps
 `last_summarised_at`. Sending neither is a 422. (The service's own idle consolidation does
-not call it; it rewrites the line itself, as [docs/operations.md](operations.md#consolidation)
-describes.) **Membership is not editable from here**, and
-that is the safeguard — a bad summarising pass can make the index read poorly, but it can
-never quietly move a fact into another subject.
+not call it; it rewrites the line itself, as
+[docs/operations.md](operations.md#consolidation) describes.) **Membership is not editable
+from here**, and that is the safeguard — a bad summarising pass can make the index read
+poorly, but it can never quietly move a fact into another subject.
 
 A title may be sent at up to 200 characters and a summary at up to 200; longer is a 422.
 The stored title is then flattened to one line and clamped to 80 characters, the summary to
-one line of 200. Both are rendered into a structured block a model reads, where a newline would break the shape and a
-title long enough to fill the budget would push out the topics underneath it.
+one line of 200. Both are rendered into a structured block a model reads, where a newline
+would break the shape and a title long enough to fill the budget would push out the topics
+underneath it.
 
-`profile` narrows the index to that profile's topics plus the account-wide ones. **With no `profile` you get the account-wide topics only** — a profile's subjects are its own, which is what keeps a work summary out of a personal one.
+`profile` narrows the index to that profile's topics plus the account-wide ones. **With no
+`profile` you get the account-wide topics only** — a profile's subjects are its own, which
+is what keeps a work summary out of a personal one.
 
 ## Filters
 
