@@ -156,9 +156,11 @@ something was remembered even after the text is gone.
 It is **never committed**. `var/`, `*.db`, `*.db-wal` and `*.db-shm` are all in
 `.gitignore`, and the comment there says why.
 
-The service creates the parent directory if it is missing, but it does **not** set the
-file's mode — SQLite creates it with the process umask. Own the directory instead, and
-check:
+The service creates the parent directory if it is missing, and every time it opens the
+database it sets the file and its `-wal` and `-shm` sidecars to `0600`. That chmod is
+skipped silently where the filesystem does not support it (Windows, some network and
+bind-mounted filesystems), and the directory it creates takes the process umask, so own the
+directory as well and check both:
 
 ```bash
 install -d -m 700 /var/lib/memory
