@@ -33,7 +33,7 @@ Two failures worth telling apart:
 
 | | Meaning |
 | --- | --- |
-| **401** | The token was not accepted. One message — `token refused` — for every reason: expired, wrong audience, wrong issuer, forged, malformed, or signed with a key keyring does not publish. You learn nothing from which, deliberately. |
+| **401** | The token was not accepted. One message — `token refused` — for every reason: expired, wrong audience, wrong issuer, forged, malformed, or signed with a key keyring does not publish. You learn nothing from which, deliberately. Sending no token at all says `a keyring token is required` instead. |
 | **503** | keyring could not be reached to fetch the verifying keys. **Your token is probably fine.** The response carries `Retry-After: 5`; retry, do not re-authenticate. |
 
 ## The operations
@@ -428,7 +428,7 @@ failing request and asserts it appears nowhere in the response.
 
 | Status | `type` slug | When |
 | --- | --- | --- |
-| 401 | `unauthorized` | The token was missing or not accepted. Same body every time. |
+| 401 | `unauthorized` | The token was missing (`a keyring token is required` on the person-facing routes) or not accepted (`token refused`, whatever the reason). `/v1/internal` answers `token refused` to every failure, a missing header included. |
 | 404 | `not-found` | No such memory, block or topic — **identical** to the answer for one belonging to another account. There is no 403 in this service: a 403 would confirm the id exists, which is the one fact that must not cross between accounts. |
 | 409 | `conflict` | A correction the store cannot apply: already superseded, forgotten, moved between scopes, or starting too early. |
 | 422 | `validation-failed` | The request body or query string broke a rule. Carries `errors`. |
