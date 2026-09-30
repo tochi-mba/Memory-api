@@ -17,15 +17,16 @@ So this runs it. On a timer, in the background, for the life of the process.
 
 A locked database, a disk that is full for a minute, a WAL checkpoint that cannot complete:
 every one of those is temporary, and every one of them would otherwise end erasure for as
-long as the process lives. The loop survives them. What it cannot do yet is *say* that one
-happened -- this service has no logging module, so a failed pass is currently silent, and
-that gap is worth closing before anybody depends on the timing of an erasure.
+long as the process lives. The loop survives them, and says so: every pass logs
+``sweep_completed erased=N`` or ``sweep_failed error_type=...``. The failure line carries
+the exception's type name and never its message, which can name the database's path.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
@@ -46,6 +47,9 @@ if TYPE_CHECKING:
         async def call(self, operation: Callable[[Any], int]) -> int: ...
 
 
+logger = logging.getLogger(__name__)
+
+
 async def run_sweeper(
     store: Sweepable,
     *,
@@ -63,10 +67,14 @@ async def run_sweeper(
     """
     while True:
         await sleep(interval_seconds)
-        with contextlib.suppress(Exception):
-            # Never `BaseException`: a cancellation is the process shutting down, and
-            # swallowing it here would keep the loop alive past the end of the application.
-            await store.call(lambda connection: connection.sweep(grace_seconds))
+        try:
+            erased = await store.call(lambda connection: connection.sweep(grace_seconds))
+        # Never `BaseException`: a cancellation is the process shutting down, and
+        # swallowing it here would keep the loop alive past the end of the application.
+        except Exception as exc:
+            logger.warning("sweep_failed error_type=%s", type(exc).__name__)
+        else:
+            logger.info("sweep_completed erased=%d", erased)
 
 
 def start_sweeper(

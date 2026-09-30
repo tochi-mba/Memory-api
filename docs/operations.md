@@ -266,9 +266,9 @@ database, a disk briefly full — does not stop the next one.
 Two things to know when running more than one process against one database. Set
 `MEMORY_SWEEP_INTERVAL_SECONDS=0` on all but one of them: the work is idempotent, so
 duplicate sweeping is wasteful rather than wrong, but there is no reason to pay for it. And
-a failed pass is currently **silent**: the sweeper logs nothing, success or failure, so if
-you depend on the timing of an erasure, watch the row count rather than the absence of an
-alert.
+every pass logs one line: `sweep_completed erased=N` at INFO, or `sweep_failed
+error_type=…` at WARNING, so if you depend on the timing of an erasure, alert on the
+failures and on the completions stopping.
 
 Whatever interval you choose, state it to the people whose memories these are. A grace
 period nobody can name is not a grace period.
@@ -295,8 +295,9 @@ of the oldest member and the highest importance among them. The topic's line in 
 rewritten from it. Because it is `inferred`, a search with `include_inferred=false` leaves
 it out.
 
-It sleeps before its first pass, and like the sweeper a failed pass is silent and does not
-stop the next one. A window of zero idle seconds is refused by the store: rewriting
+It sleeps before its first pass, and like the sweeper a failed pass does not stop the next
+one. Every pass logs `consolidation_completed summaries=N` at INFO or `consolidation_failed
+error_type=…` at WARNING. A window of zero idle seconds is refused by the store: rewriting
 everything the moment it is written is not consolidation. Untrusted memories are never
 merged, confirmed or not. A combined body that looks like a credential is skipped rather
 than stored. With more than one process against one database, set
@@ -344,12 +345,19 @@ operator can see it before the grace runs out.
 
 ## Logs
 
-Logging is the standard library's, at `MEMORY_LOG_LEVEL`, with uvicorn's access log. This
-service writes exactly one record of its own: `unhandled_exception error_type=…`, carrying
-the exception's **type name only**, never its arguments — a `ValueError` raised deep in a
-write path routinely carries the value, and here the value is a sentence somebody wrote
-about their own life. The `request_id` in the 500 body is what ties the caller's report to
-that record.
+Logging is the standard library's, at `MEMORY_LOG_LEVEL`, with uvicorn's access log; the
+`memory-api` entry point sends this service's own records to uvicorn's handler. It writes
+five records of its own, each carrying an **exception type name** or a **count**, never an
+exception's arguments — a `ValueError` raised deep in a write path routinely carries the
+value, and here the value is a sentence somebody wrote about their own life:
+
+| Record | Level | When |
+| --- | --- | --- |
+| `unhandled_exception error_type=…` | ERROR | A request failed with a 500. The `request_id` in the body ties the caller's report to it. |
+| `sweep_completed erased=N` | INFO | A sweep pass finished. |
+| `sweep_failed error_type=…` | WARNING | A sweep pass failed; the next one still runs. |
+| `consolidation_completed summaries=N` | INFO | A consolidation pass finished. |
+| `consolidation_failed error_type=…` | WARNING | A consolidation pass failed; the next one still runs. |
 
 Nothing else is logged, which is why there is no redaction processor to configure: there is
 no path by which a memory's text reaches a log line.

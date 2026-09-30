@@ -8,6 +8,7 @@ first: the one that never ran at all.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -102,3 +103,22 @@ async def test_a_started_sweeper_stops_when_it_is_asked_to() -> None:
 
     assert task.done()
     assert store.grace, "it did sweep at least once before being stopped"
+
+
+async def test_every_pass_says_what_it_did_and_a_failure_says_only_its_type(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # Erasure is the one promise here with a deadline, and an operator who depends on its
+    # timing needs a line per pass rather than a row count to watch. The failure line
+    # carries the exception's type and never its message, which can name a path.
+    store, sleep = Recorder(fail_times=1), Ticks(allowed=2)
+    caplog.set_level(logging.INFO, logger="memory_api.core.sweeper")
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_sweeper(store, grace_seconds=600.0, interval_seconds=60.0, sleep=sleep)
+
+    assert [(record.levelname, record.getMessage()) for record in caplog.records] == [
+        ("WARNING", "sweep_failed error_type=RuntimeError"),
+        ("INFO", "sweep_completed erased=1"),
+    ]
+    assert "locked" not in caplog.text
