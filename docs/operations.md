@@ -163,14 +163,24 @@ This service verifies keyring's tokens locally and never calls keyring at reques
 | `MEMORY_KEYRING_JWKS_URL` | `http://127.0.0.1:8001/.well-known/jwks.json` | Where keyring publishes its public keys. Must be reachable from this process. |
 | `MEMORY_KEYRING_ISSUER` | `http://127.0.0.1:8001` | Pinned against the token's `iss`. Must equal keyring's `KEYRING_ISSUER` exactly, or every token is refused, identically and unhelpfully. |
 | `MEMORY_AUDIENCE` | `memory-api` | Pinned against the token's `aud`, exactly. Must be non-empty, carry no surrounding whitespace and contain **no dot** — a dotted audience is an audience *family*, and this service has no compartments. Anything else is a startup error. |
-| `MEMORY_FORGET_GRACE_SECONDS` | `2592000` (30 days) | How long a forgotten memory can still be restored before it is erased for good. |
-| `MEMORY_SWEEP_INTERVAL_SECONDS` | `3600` | How often erasure runs. `0` turns it off, which is a choice an operator may need to make; it is not a default. |
-| `MEMORY_CONSOLIDATE_IDLE_SECONDS` | `2592000` (30 days) | How long a memory must go unused (last access, not creation) before the idle-merge pass may fold it into a topic summary. |
-| `MEMORY_CONSOLIDATE_INTERVAL_SECONDS` | `3600` | How often that pass runs. `0` turns it off. |
-| `MEMORY_SERVICE_TOKENS` | empty | JSON object of sibling name to token, 32+ characters each. Empty refuses every `/v1/internal` call. Never a person token. |
 | `MEMORY_JWKS_CACHE_SECONDS` | `3600` | How long keys are held before being read again. |
 | `MEMORY_JWKS_MIN_REFETCH_SECONDS` | `30` | Floor between the refetches an unknown key id may provoke. Not a tuning knob: without it a stream of tokens with random `kid`s is an outbound-fetch amplifier pointed at keyring. |
 | `MEMORY_KEYRING_TIMEOUT_SECONDS` | `5` | Per fetch of the key document. |
+
+### Sibling access
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `MEMORY_SERVICE_TOKENS` | empty | JSON object of sibling name to token, `{"lucy-api": "..."}`. Each token is at least 32 characters with no surrounding whitespace, and no two services may share one; anything else is a startup error. The name is what `asserted_by` records on a memory that sibling writes. Empty refuses every `/v1/internal` call. Never a person token. |
+
+### Background passes
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `MEMORY_FORGET_GRACE_SECONDS` | `2592000` (30 days) | How long a forgotten memory can still be restored before it is erased for good. Must be above zero. |
+| `MEMORY_SWEEP_INTERVAL_SECONDS` | `3600` | How often erasure runs. `0` (or less) turns it off, which is a choice an operator may need to make; it is not a default. |
+| `MEMORY_CONSOLIDATE_IDLE_SECONDS` | `2592000` (30 days) | How long a memory must go unused (last access, not creation) before the idle-merge pass may fold it into a topic summary. Must be above zero. |
+| `MEMORY_CONSOLIDATE_INTERVAL_SECONDS` | `3600` | How often that pass runs. `0` (or less) turns it off. |
 
 ### Deliberate absences
 
@@ -255,12 +265,16 @@ database, a disk briefly full — does not stop the next one.
 Two things to know when running more than one process against one database. Set
 `MEMORY_SWEEP_INTERVAL_SECONDS=0` on all but one of them: the work is idempotent, so
 duplicate sweeping is wasteful rather than wrong, but there is no reason to pay for it. And
-a failed pass is currently **silent**, because this service has no logging module yet; if
+a failed pass is currently **silent**: the sweeper logs nothing, success or failure, so if
 you depend on the timing of an erasure, watch the row count rather than the absence of an
 alert.
 
 Whatever interval you choose, state it to the people whose memories these are. A grace
 period nobody can name is not a grace period.
+
+**There is no operator path into somebody's memories**, and that is the point. If an account
+is gone from keyring and nobody can mint a token for it, its rows are unreachable through
+the API and the remaining option is SQL on the box, by whoever runs it.
 
 ## Consolidation
 
@@ -271,14 +285,18 @@ procedures and summaries in one topic whose `last_accessed_at` is older than
 (`source=consolidation`, `asserted_by=memory-api`); the originals are superseded, not
 deleted, so the audit view still has them.
 
-It sleeps before its first pass. A window of zero idle seconds is refused by the store:
-rewriting everything the moment it is written is not consolidation. Untrusted memories
-are never merged. A combined body that looks like a credential is skipped rather than
-stored.
+The summary is written with `trust=inferred`, its body is the members' bodies joined with
+`; ` (clamped to 16000 characters), and it takes the title, scope, profile and session of
+the oldest member and the highest importance among them. The topic's line in the index is
+rewritten from it. Because it is `inferred`, a search with `include_inferred=false` leaves
+it out.
 
-**There is no operator path into somebody's memories**, and that is the point. If an account
-is gone from keyring and nobody can mint a token for it, its rows are unreachable through
-the API and the remaining option is SQL on the box, by whoever runs it.
+It sleeps before its first pass, and like the sweeper a failed pass is silent and does not
+stop the next one. A window of zero idle seconds is refused by the store: rewriting
+everything the moment it is written is not consolidation. Untrusted memories are never
+merged, confirmed or not. A combined body that looks like a credential is skipped rather
+than stored. With more than one process against one database, set
+`MEMORY_CONSOLIDATE_INTERVAL_SECONDS=0` on all but one of them, as with the sweep.
 
 ## Health
 
