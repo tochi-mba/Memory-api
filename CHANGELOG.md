@@ -57,6 +57,11 @@ All notable changes to memory-api are recorded here. The format follows
   a statement. It now records `confirmed_at` and leaves `trust` alone; retrieval and the
   topic index gate on the confirmation instead, so an untrusted memory still has to be
   vouched for before it is used and still remembers what it was.
+- **A correction rewrites its topic's line in the index.** A topic's summary was written
+  once, from its first memory, and a correction joined the topic without touching it, so
+  the index an assistant is told to believe went on stating what the correction said was
+  wrong. A usable correction now rewrites the summary from its own body and clears
+  `last_summarised_at`; an untrusted one rewrites nothing until it is confirmed.
 - **`summary` memories are retrievable.** The retrieval filter admitted only `fact` and
   `procedure`, so the distilled output of a consolidation pass was the one kind that could
   never be read back. An account-scoped `episode` is still excluded, which was the intent.
