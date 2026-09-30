@@ -51,9 +51,9 @@ of it is testable against a clock that advances on its own. Sub-second real time
 decay and recency ties unstable.
 
 Every test gets its own `:memory:` database, created and destroyed with the test: the
-`client` fixture's lives on the app's worker thread, the `store` fixture's on the test's own.
-A shared file would make the suite order-dependent in the way that is hardest to see: a test
-that passes alone and fails after another one wrote a memory.
+`client` fixture's lives on the app's worker thread, the `store` fixture's on the test's
+own. A shared file would make the suite order-dependent in the way that is hardest to see:
+a test that passes alone and fails after another one wrote a memory.
 
 ## The suites
 

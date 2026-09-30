@@ -17,10 +17,10 @@ src/memory_api/
 ```
 
 Dependencies point inward. `domain/` is pure — models, clustering rules and the credential
-check, with no I/O, no clock and no configuration — which is what lets the rules be read and
-tested as functions. `core/container.py` is the composition root: the JWKS client, the
-verifier, the service-token authenticator and the store worker are constructed there, once, and handed to the app, so every
-part of the service is testable by substitution.
+check, with no I/O, no clock and no configuration — which is what lets the rules be read
+and tested as functions. `core/container.py` is the composition root: the JWKS client, the
+verifier, the service-token authenticator and the store worker are constructed there, once,
+and handed to the app, so every part of the service is testable by substitution.
 
 `api/schemas.py` and `domain/models.py` are separate on purpose. The domain models are what
 the store reads and writes; the schemas are the envelopes around them. The HTTP contract is
@@ -243,12 +243,12 @@ stored counters: one drifts the moment a memory is forgotten, superseded or eras
 index that overstates what it holds sends the model looking for something that is not there.
 
 The `HAVING memory_count > 0` clause is the boundary, and `memory_count` counts only
-members that are usable: **not** untrusted, or untrusted and since confirmed. So **a topic made entirely of unconfirmed memories never
-reaches the index, and cannot be expanded either.** Anybody who can get a paragraph in front
-of an extraction pass — a web page, a forwarded email — can propose a memory. Storing it is
-fine. Naming a topic after it, and putting that name in front of the model every turn, is
-the attack. Confirming one member is enough to bring the topic in; the rest stay counted
-separately as `unconfirmed`.
+members that are usable: **not** untrusted, or untrusted and since confirmed. So **a topic
+made entirely of unconfirmed memories never reaches the index, and cannot be expanded
+either.** Anybody who can get a paragraph in front of an extraction pass — a web page, a
+forwarded email — can propose a memory. Storing it is fine. Naming a topic after it, and
+putting that name in front of the model every turn, is the attack. Confirming one member is
+enough to bring the topic in; the rest stay counted separately as `unconfirmed`.
 
 ## Consolidation is ranking hygiene, not deletion
 
