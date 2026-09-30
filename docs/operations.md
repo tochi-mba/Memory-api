@@ -55,19 +55,38 @@ keyring's internal endpoints, which this service never calls. To *accept* Lucy o
 `/v1/internal`, set `MEMORY_SERVICE_TOKENS` to a JSON object whose values are 32+ character
 tokens you also give Lucy.
 
-## In compose
+## In a container
 
 ```bash
 make docker       # builds memory-api:local
-docker run -p 8009:8009 --env-file .env \
-  -e MEMORY_DATABASE_PATH=/var/lib/memory/memory.db \
+docker run -p 8009:8009 --add-host=host.docker.internal:host-gateway \
+  -e MEMORY_KEYRING_JWKS_URL=http://host.docker.internal:8001/.well-known/jwks.json \
+  -e MEMORY_KEYRING_ISSUER=http://127.0.0.1:8001 \
   -v memory-data:/var/lib/memory memory-api:local
 ```
 
-The image runs as a non-root user, bakes `MEMORY_HOST=0.0.0.0`, `MEMORY_PORT=8009` and
-`MEMORY_LOG_FORMAT=json`, and its `HEALTHCHECK` calls `/healthy`. The keyring issuer and
-JWKS URL are deliberately **not** baked in: they name the keyring this deployment trusts,
-and a default in the image is how a container ends up trusting the wrong one.
+That reaches a keyring running on the host, which has to listen on an address the
+container can reach (`KEYRING_HOST=0.0.0.0`), not only on loopback. Do not pass the `.env`
+you copied from `.env.example` with `--env-file`: its `MEMORY_HOST=127.0.0.1` and relative
+`MEMORY_DATABASE_PATH` override the image's values, so the container listens where the
+port mapping cannot reach it and writes its database outside the volume.
+
+The image runs as the non-root user `memory` (uid 10001) and bakes `MEMORY_HOST=0.0.0.0`,
+`MEMORY_PORT=8009`, `MEMORY_DATABASE_PATH=/var/lib/memory/memory.db` and
+`MEMORY_LOG_FORMAT=json`. `/var/lib/memory` is created `0700` and owned by that user before
+it is declared a `VOLUME`, so a new named volume arrives writable. Its `HEALTHCHECK` calls
+`/healthy`. The keyring issuer and JWKS URL are deliberately **not** baked in: they name the
+keyring this deployment trusts, and a default in the image is how a container ends up
+trusting the wrong one. Left unset, they fall back to the code defaults on `127.0.0.1`,
+which inside a container is the container itself, so every authenticated request answers
+503.
+
+A volume created by an older image, before the directory was made in the image, stays
+root-owned: docker only seeds ownership into an empty volume. `/ready` then reports the
+database with reason `OperationalError`. Recreate the volume if it has never held data, or
+`chown 10001:10001` its contents.
+
+## In compose
 
 The family compose file lives in the meta-repo, beside the service checkouts, and the hub
 already expects this service at `http://memory:8009`. The block:
@@ -93,8 +112,23 @@ already expects this service at `http://memory:8009`. The block:
     depends_on:
       keyring:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8009/healthy', timeout=4).status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     networks: [lucy]
 ```
+
+`MEMORY_SERVICE_TOKENS` arrives through `.env.family`: the meta-repo's `scripts/genenv.py`
+writes a token for Lucy there, and the same value as Lucy's `LUCY_MEMORY_API_TOKEN`.
 
 The JWKS URL and the issuer are different strings on purpose. The URL is where this
 container reaches keyring; the issuer is the string keyring **mints its tokens with**, and
