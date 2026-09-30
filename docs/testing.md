@@ -66,7 +66,7 @@ a test that passes alone and fails after another one wrote a memory.
 | `test_topics.py` | Which topic a memory lands in, what the index is allowed to say, the untrusted-topic boundary, rewriting a topic's words, a correction rewriting its topic's line, and the topic routes over HTTP. |
 | `test_internal.py` | The two-credential `/v1/internal` surface: a sibling acting for the person whose token it holds, every refusal identical, another account a 404, and an unconfigured service refused. |
 | `test_sweeper.py` | The erasure loop: it waits before its first pass, sweeps on the interval with the configured grace, survives a failed pass, and stops when asked. An interval of zero never starts it. |
-| `test_consolidate.py` | Idle consolidation: which idle memories merge, which are left alone (a lone one, a recently used pair, untrusted ones, a body that looks like a secret), that a zero window rewrites nothing, and the loop's lifecycle. |
+| `test_consolidate.py` | Idle consolidation: which idle memories merge, which are left alone (a lone one, a recently used pair, untrusted ones, a body that looks like a secret, memories in another scope, profile or session), that a zero window rewrites nothing, and the loop's lifecycle. |
 | `test_domain.py` | The pure rules: a memory that must agree with itself, the credential refusal, topic keys, similarity, choice and summaries. |
 | `test_errors.py` | One error shape from all four sources — a domain rule, FastAPI's validation, Starlette's router, and a bug — plus the request id and the two things a body must never contain. |
 | `test_worker.py` | The thread the database lives on. |

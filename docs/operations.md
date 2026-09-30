@@ -286,9 +286,12 @@ procedures and summaries in one topic whose `last_accessed_at` is older than
 (`source=consolidation`, `asserted_by=memory-api`); the originals are superseded, not
 deleted, so the audit view still has them.
 
-The summary is written with `trust=inferred`, its body is the members' bodies joined with
-`; ` (clamped to 16000 characters), and it takes the title, scope, profile and session of
-the oldest member and the highest importance among them. The topic's line in the index is
+Only memories in the same compartment merge: the same scope, profile and session. A
+profile's topic also holds each of its sessions' memories, and folding those together would
+move a fact into a compartment that could not see it before, which is what a correction is
+refused for. The summary is written with `trust=inferred` in that compartment, its body is
+the members' bodies joined with `; ` (clamped to 16000 characters), and it takes the title
+of the oldest member and the highest importance among them. The topic's line in the index is
 rewritten from it. Because it is `inferred`, a search with `include_inferred=false` leaves
 it out.
 
