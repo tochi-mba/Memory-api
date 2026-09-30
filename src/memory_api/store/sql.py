@@ -296,17 +296,7 @@ class SQLStore:
         ).fetchall()
         if candidates and previous is None:
             return self._refresh(self._decode(candidates[0]), request)
-        memory = Memory(
-            **request.model_dump(exclude={"valid_from"}),
-            id="mem_" + secrets.token_hex(16),
-            account_id=account,
-            asserted_by=asserted_by,
-            created_at=now,
-            updated_at=now,
-            last_accessed_at=now,
-            valid_from=now if request.valid_from is None else request.valid_from,
-            supersedes_id=target,
-        )
+        memory = self._fresh(account, asserted_by, request, now, target)
         if previous is not None:
             previous.valid_to = memory.valid_from
             previous.superseded_by_id = memory.id
@@ -322,6 +312,23 @@ class SQLStore:
         self._summarise_correction(memory)
         self._event(account, "add" if previous is None else "correct", memory.id)
         return memory
+
+    @staticmethod
+    def _fresh(
+        account: str, asserted_by: str, request: MemoryInput, now: float, target: str | None
+    ) -> Memory:
+        """A new row for `request`, not yet in any topic and not yet saved."""
+        return Memory(
+            **request.model_dump(exclude={"valid_from"}),
+            id="mem_" + secrets.token_hex(16),
+            account_id=account,
+            asserted_by=asserted_by,
+            created_at=now,
+            updated_at=now,
+            last_accessed_at=now,
+            valid_from=now if request.valid_from is None else request.valid_from,
+            supersedes_id=target,
+        )
 
     def _summarise_correction(self, memory: Memory) -> None:
         """A usable correction rewrites its topic's line in the index.
@@ -787,9 +794,17 @@ class SQLStore:
             refuse_secrets(request.model_dump())
         except SecretError:
             return False
-        summary = self._write(account, "memory-api", request)
+        # Not `_write`. That is the path for a caller's write, and two of its steps are wrong
+        # here. Topic assignment matches on the title, and the oldest member's title can
+        # match no topic at all -- a correction inherits its topic whatever it is called --
+        # so it would create a topic the summary is then taken out of, leaving a row with
+        # nothing in it. And the duplicate check can find a member: an earlier summary plus
+        # a fact with no body merge to that summary's own words, and the merge would then
+        # mark it superseded by itself.
+        summary = self._fresh(account, "memory-api", request, now, None)
         summary.topic_id = topic_id
         self._save(summary)
+        self._event(account, "add", summary.id)
         for previous in members:
             previous.valid_to = now
             previous.superseded_by_id = summary.id
