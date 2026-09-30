@@ -84,6 +84,11 @@ All notable changes to memory-api are recorded here. The format follows
   oldest member's scope: one session's facts surfaced in every session of the profile, or
   were folded into another session and disappeared from their own. Only memories with the
   same scope, profile and session merge now.
+- **A consolidation summary is written straight into its members' topic.** It went through
+  the ordinary write path, which matched a topic by title: when the oldest member was a
+  correction titled unlike its topic, a new topic was created and then left with nothing in
+  it. The same path's duplicate check could return an earlier summary that was itself a
+  member, which the merge then superseded with itself, leaving the topic nothing current.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,

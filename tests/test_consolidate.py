@@ -219,3 +219,50 @@ def test_a_session_memory_is_never_merged_into_another_compartment(
     assert bodies("monday") == ["Assam in the morning; Lapsang after dinner", "Earl Grey"]
     assert bodies("tuesday") == ["Earl Grey", "Rooibos on Tuesdays"]
     assert bodies("wednesday") == ["Earl Grey"]
+
+
+def test_a_summary_never_leaves_a_topic_with_nothing_in_it(
+    store: SQLStore, clock: FakeClock
+) -> None:
+    # A correction inherits its topic whatever it is titled, so the oldest current member
+    # can carry a title that matches no topic. Giving the summary that title used to create
+    # a topic for it and then move the summary back to the members' topic, leaving a row
+    # that nothing pointed at.
+    original = store.write(ACCOUNT, ACCOUNT, MemoryInput(title="Home city", body="London"))
+    clock.advance(1)
+    store.write(ACCOUNT, ACCOUNT, MemoryInput(title="Where I live", body="Bristol"), original.id)
+    clock.advance(1)
+    store.write(ACCOUNT, ACCOUNT, MemoryInput(title="Home city", body="Near the harbour"))
+    clock.advance(40 * DAY)
+
+    assert store.consolidate(30 * DAY) == 1
+
+    empty = store.db.execute(
+        "SELECT COUNT(*) FROM topics t WHERE NOT EXISTS "
+        "(SELECT 1 FROM memories m WHERE m.topic_id=t.id)"
+    ).fetchone()[0]
+    assert empty == 0
+    summary = store.listing(ACCOUNT, Selection(), retrieval=True).data[0]
+    assert summary.topic_id == original.topic_id
+
+
+def test_a_summary_is_never_deduplicated_into_a_member_it_supersedes(
+    store: SQLStore, clock: FakeClock
+) -> None:
+    # An earlier summary plus a fact with no body would produce a summary identical to the
+    # earlier one. Treating that as a repeated write returned the earlier summary, which the
+    # merge then marked superseded by itself -- and the topic had nothing current left.
+    store.write(
+        ACCOUNT,
+        ACCOUNT,
+        MemoryInput(title="Favourite tea", body="Earl Grey", kind="summary", trust="inferred"),
+    )
+    _write(store, "")
+    clock.advance(40 * DAY)
+
+    assert store.consolidate(30 * DAY) == 1
+
+    retrieved = store.listing(ACCOUNT, Selection(), retrieval=True).data
+    assert [(row.kind, row.body) for row in retrieved] == [("summary", "Earl Grey")]
+    assert retrieved[0].superseded_by_id is None
+    assert retrieved[0].source == "consolidation"
