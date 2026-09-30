@@ -50,7 +50,8 @@ service does — what was true then, what is true now, what a correction replace
 of it is testable against a clock that advances on its own. Sub-second real time also makes
 decay and recency ties unstable.
 
-Every test gets its own `:memory:` database, created and destroyed with its worker thread.
+Every test gets its own `:memory:` database, created and destroyed with the test: the
+`client` fixture's lives on the app's worker thread, the `store` fixture's on the test's own.
 A shared file would make the suite order-dependent in the way that is hardest to see: a test
 that passes alone and fails after another one wrote a memory.
 
@@ -59,10 +60,13 @@ that passes alone and fails after another one wrote a memory.
 | File | What it pins |
 | --- | --- |
 | `test_memory_eval.py` | The quality contract. Its own section, below. |
-| `test_contract.py` | The exact set of twenty-one `operation_id`s; that every operation has a summary and a longer description; that every failure a route can produce is declared; that every failure body is a `Problem`; that every request body forbids extra fields; that no path or parameter names an account; and that the literal routes are declared before `/{memory_id}`. |
+| `test_contract.py` | The exact set of `operation_id`s: the twenty-one person-facing ones and the ten `internal_*` ones; that every operation has a summary and a longer description; that every failure a route can produce is declared; that every failure body is a `Problem`; that every request body forbids extra fields; that no path or parameter names an account; and that the literal routes are declared before `/{memory_id}` on both the person-facing and the internal router. |
 | `test_memory_routes.py` | The surface rather than the storage: which literal paths survive sitting under `/{memory_id}`, that identity comes from the token and nowhere else, that the two list views really are two views, blocks, batches, forgetting everything, and that every route requires a token. |
-| `test_store.py` | The store one call at a time: deduplication, the several ways a correction is refused, transitions, batch atomicity, what a listing includes, cursor paging, search, retrieval ranking, blocks, the sweep, and that an older database gains the column it lacks. |
-| `test_topics.py` | Which topic a memory lands in, what the index is allowed to say, the untrusted-topic boundary, rewriting a topic's words, and the topic routes over HTTP. |
+| `test_store.py` | The store one call at a time: deduplication, the several ways a correction is refused, transitions, batch atomicity, what a listing includes, cursor paging, search, retrieval ranking, blocks, the sweep, the database file's `0600` mode, and that an older database gains the column it lacks and a topic for every memory. |
+| `test_topics.py` | Which topic a memory lands in, what the index is allowed to say, the untrusted-topic boundary, rewriting a topic's words, a correction rewriting its topic's line, and the topic routes over HTTP. |
+| `test_internal.py` | The two-credential `/v1/internal` surface: a sibling acting for the person whose token it holds, every refusal identical, another account a 404, and an unconfigured service refused. |
+| `test_sweeper.py` | The erasure loop: it waits before its first pass, sweeps on the interval with the configured grace, survives a failed pass, and stops when asked. An interval of zero never starts it. |
+| `test_consolidate.py` | Idle consolidation: which idle memories merge, which are left alone (a lone one, a recently used pair, untrusted ones, a body that looks like a secret), that a zero window rewrites nothing, and the loop's lifecycle. |
 | `test_domain.py` | The pure rules: a memory that must agree with itself, the credential refusal, topic keys, similarity, choice and summaries. |
 | `test_errors.py` | One error shape from all four sources — a domain rule, FastAPI's validation, Starlette's router, and a bug — plus the request id and the two things a body must never contain. |
 | `test_worker.py` | The thread the database lives on. |
