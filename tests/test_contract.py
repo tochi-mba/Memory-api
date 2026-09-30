@@ -104,7 +104,7 @@ class TestEveryOperation:
     ) -> None:
         expected_failures = {
             "create_memory": {"401", "422"},
-            "list_memories": {"401", "422"},
+            "list_memories": {"401", "404", "422"},
             "search_memories": {"401", "422"},
             "get_memory": {"401", "404", "422"},
             "correct_memory": {"401", "404", "409", "422"},
@@ -121,6 +121,8 @@ class TestEveryOperation:
             "get_memory_topic": {"401", "404", "422"},
             "update_memory_topic": {"401", "404", "422"},
             "internal_create_memory": {"401", "422"},
+            # A cursor naming a memory that is not yours answers 404, as on `list_memories`.
+            "internal_list_memories": {"401", "404", "422"},
             "internal_list_memory_blocks": {"401", "422"},
             "internal_search_memories": {"401", "404", "422"},
             "internal_get_memory": {"401", "404", "422"},

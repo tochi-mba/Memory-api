@@ -76,6 +76,9 @@ All notable changes to memory-api are recorded here. The format follows
 - `search_memories`'s description listed four exclusions where retrieval applies six. It
   now names forgotten memories and other profiles' and sessions' memories too, and says
   that a search with no `profile` returns account-wide memories only.
+- `internal_list_memories` declares its 404 in the OpenAPI document. A cursor naming a
+  memory that is not the person's has always answered 404 there, as it does on
+  `list_memories`, but the published contract left it out.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,
