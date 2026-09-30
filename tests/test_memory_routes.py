@@ -19,7 +19,9 @@ import pytest
 from conftest import ACCOUNT, OTHER_ACCOUNT, bearer
 
 if TYPE_CHECKING:
-    from httpx import AsyncClient
+    from httpx import AsyncClient, Response
+
+PAST_EXPIRY = {"expires_at": 1.0}
 
 
 async def write(client: AsyncClient, **fields: object) -> dict[str, object]:
@@ -314,6 +316,56 @@ class TestTheBatchRoute:
     async def test_an_empty_batch_is_refused(self, client: AsyncClient) -> None:
         response = await client.post("/v1/memory/batch", headers=bearer(), json={"decisions": []})
         assert response.status_code == 422
+
+
+class TestAnExpiryBeforeTheStartIsTheCallersMistake:
+    """An `expires_at` in the past with no `valid_from` is checked once the start is known.
+
+    The request validates on its own, because its `valid_from` is absent. The start is
+    filled in with "now" by the store, and the pair used to be checked only by building the
+    stored model, whose `ValidationError` nothing mapped: the caller got a 500 for a value
+    it sent. It is the same 422 a repeated write gets for the same mistake.
+    """
+
+    @staticmethod
+    def assert_refused(response: Response) -> None:
+        assert response.status_code == 422, response.text
+        assert response.headers["content-type"].startswith("application/problem+json")
+        body = response.json()
+        assert body["type"].endswith("/invalid-memory")
+        assert body["detail"] == "expires_at must follow valid_from"
+
+    async def test_on_a_write(self, client: AsyncClient) -> None:
+        response = await client.post(
+            "/v1/memory", headers=bearer(), json={"title": "Home city", **PAST_EXPIRY}
+        )
+        self.assert_refused(response)
+
+    async def test_on_a_correction(self, client: AsyncClient) -> None:
+        old = await write(client, body="Lived in London")
+        response = await client.post(
+            f"/v1/memory/{old['id']}/correct",
+            headers=bearer(),
+            json={"title": "Home city", "body": "Moved to Bristol", **PAST_EXPIRY},
+        )
+        self.assert_refused(response)
+        assert (await client.get(f"/v1/memory/{old['id']}", headers=bearer())).json()[
+            "superseded_by_id"
+        ] is None, "a refused correction retires nothing"
+
+    @pytest.mark.parametrize("action", ["ADD", "UPDATE"])
+    async def test_in_a_batch(self, client: AsyncClient, action: str) -> None:
+        old = await write(client, body="Lived in London")
+        decision: dict[str, object] = {
+            "action": action,
+            "memory": {"title": "Home city", "body": "Moved to Bristol", **PAST_EXPIRY},
+        }
+        if action == "UPDATE":
+            decision["memory_id"] = old["id"]
+        response = await client.post(
+            "/v1/memory/batch", headers=bearer(), json={"decisions": [decision]}
+        )
+        self.assert_refused(response)
 
 
 class TestForgettingEverything:

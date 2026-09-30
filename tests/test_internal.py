@@ -167,3 +167,18 @@ async def test_a_listing_cursor_that_is_not_the_persons_memory_answers_404(
     )
     assert listed.status_code == 404
     assert listed.headers["content-type"].startswith("application/problem+json")
+
+
+@pytest.mark.parametrize("correcting", [False, True])
+async def test_an_expiry_before_the_start_is_a_422_on_the_internal_writes(
+    internal: AsyncClient, *, correcting: bool
+) -> None:
+    path = "/v1/internal/memory"
+    if correcting:
+        old = await internal.post(path, headers=headers(), json={"title": "Home city"})
+        path += f"/{old.json()['id']}/correct"
+    response = await internal.post(
+        path, headers=headers(), json={"title": "Home city", "body": "x", "expires_at": 1.0}
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "expires_at must follow valid_from"

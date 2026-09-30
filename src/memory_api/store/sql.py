@@ -297,6 +297,9 @@ class SQLStore:
         ).fetchall()
         if candidates and previous is None:
             return self._refresh(self._decode(candidates[0]), request)
+        self._require_expiry_after_start(
+            now if request.valid_from is None else request.valid_from, request.expires_at
+        )
         memory = self._fresh(account, asserted_by, request, now, target)
         if previous is not None:
             previous.valid_to = memory.valid_from
@@ -313,6 +316,20 @@ class SQLStore:
         self._summarise_correction(memory)
         self._event(account, "add" if previous is None else "correct", memory.id)
         return memory
+
+    @staticmethod
+    def _require_expiry_after_start(valid_from: float | None, expires_at: float | None) -> None:
+        """Refuse an expiry that does not follow the start the stored row will have.
+
+        A request is validated against its own `valid_from`, which may be absent: the store
+        fills in "now" for a new row and keeps the stored start for a repeat. The pair the
+        row actually ends up with is only known here. Left to the `Memory` model, the same
+        rule raised a `ValidationError` nothing maps, and the caller got a 500 for a value it
+        sent; stored anyway, the row no longer decodes.
+        """
+        if expires_at is not None and expires_at <= (valid_from or 0):
+            message = "expires_at must follow valid_from"
+            raise MemoryFault(message)
 
     @staticmethod
     def _fresh(
@@ -480,12 +497,7 @@ class SQLStore:
             return stored
         for field, value in changes.items():
             setattr(stored, field, value)
-        # The request was checked against its own `valid_from`, which may be absent. What
-        # has to hold is the pair the stored row ends up with: an expiry before the start is
-        # a row that no longer decodes, and every listing of the account would fail on it.
-        if stored.expires_at is not None and stored.expires_at <= (stored.valid_from or 0):
-            message = "expires_at must follow valid_from"
-            raise MemoryFault(message)
+        self._require_expiry_after_start(stored.valid_from, stored.expires_at)
         stored.updated_at = self.clock()
         stored.revision += 1
         self._save(stored)
