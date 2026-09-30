@@ -95,7 +95,7 @@ time a model calls it for a bad reason".
 | Expose | Why |
 | --- | --- |
 | `list_memory_topics` | **Call this first.** The index: one line per subject with a live count, cheap enough to carry every turn. Forty lines instead of four hundred, and it is what lets a model tell what it knows *about*. Put that sentence in the tool description. |
-| `get_memory_topic` | Expand the one subject the index says is relevant. Untrusted members are already left out. |
+| `get_memory_topic` | Expand the one subject the index says is relevant. Unconfirmed untrusted members are already left out. |
 | `search_memories` | The retrieval view, ranked, safe to reason from. The other main read. |
 | `get_memory` | One memory by id, with its full provenance. |
 | `create_memory` | The write. Its description already says to set `trust: untrusted` for third-party content; surface it verbatim. |
@@ -166,7 +166,7 @@ so an undescribed route cannot ship. Surface them verbatim.
 `valid_from`, `supersedes_id` and the timestamps come back on every memory, on every route
 that returns one — never as an optional expansion a caller has to remember to ask for.
 
-**Bounded payloads.** Every list takes a `limit` of at most 100, the topic index reports an
+**Bounded payloads.** Every memory and topic list takes a `limit` of at most 100, the topic index reports an
 honest `total` so a model can say "showing 12 of 47" rather than assume it has everything,
 and blocks carry their own character limit.
 
