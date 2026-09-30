@@ -198,8 +198,10 @@ yours.
 ## Trust, and confirming
 
 `untrusted` is for anything a third party said — a web page, an email, a document. It is
-stored and listed like anything else and **never retrieved**, so it cannot reach a prompt.
-`confirm_memory` promotes it to `stated` and stamps `confirmed_at`.
+stored and listed like anything else and **never retrieved** until it is confirmed, so it
+cannot reach a prompt. `confirm_memory` stamps `confirmed_at` and leaves `trust` alone: a
+confirmed memory is retrieved, and it still says it came from a third party. Provenance is
+a record of where a claim came from, and vouching for a claim does not change that.
 
 Confirm only what the person themselves confirmed. Confirming on their behalf defeats the
 entire point of the trust level; see [docs/mcp.md](mcp.md).
@@ -270,15 +272,16 @@ first page". A caller that cannot tell the difference will quietly reason from a
 
 `memory_count`, `unconfirmed`, `last_seen` and `importance` are recomputed from the
 memories that are in the topic *right now*, never stored counters. `unconfirmed` counts
-untrusted members; they are **not** in `memory_count` and never reach retrieval.
+untrusted members nobody has confirmed yet; they are **not** in `memory_count` and never
+reach retrieval. A confirmed untrusted member counts in `memory_count` like any other.
 
 A topic whose memories have all been forgotten or superseded disappears from the index
 rather than lingering as a title with nothing behind it, and **a topic made entirely of
-untrusted memories never appears at all** — its title was written from content somebody
+unconfirmed untrusted memories never appears at all** — its title was written from content somebody
 else supplied, and the title is the part that reaches the prompt.
 
 `GET /v1/memory/topics/{topic_id}` expands one: the topic plus its memories, most recently
-used first, untrusted members left out, `limit` 1–100 (default 50). A topic with nothing
+used first, unconfirmed untrusted members left out, `limit` 1–100 (default 50). A topic with nothing
 current behind it answers 404.
 
 `PATCH /v1/memory/topics/{topic_id}` is what a consolidation pass writes back: `title`,
