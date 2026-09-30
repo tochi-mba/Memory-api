@@ -10,8 +10,9 @@ All notable changes to memory-api are recorded here. The format follows
 
 - **Memories.** Write, read, search, correct, confirm, forget, restore and erase, plus
   batch reconciliation so a caller can decide add, update, delete or no-op per candidate
-  rather than blindly appending. Cursor pagination throughout. Every `operation_id` is
-  stable public API because it becomes an MCP tool name, and a contract test pins the set.
+  rather than blindly appending. Cursor pagination on the listing view. Every
+  `operation_id` is stable public API because it becomes an MCP tool name, and a contract
+  test pins the set.
 - **Topics.** Memories cluster into named subjects with a title, a one-line summary and a
   count, so a caller can carry an index instead of the contents and expand only the
   subject it needs. `GET /v1/memory/topics` is the index, with an honest total so
