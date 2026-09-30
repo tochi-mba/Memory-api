@@ -8,7 +8,7 @@ a check somewhere -- it is inexpressible, because no route has anywhere to put t
 person's id.
 
 **The selection model is reused, not restated.** ``SelectionDep`` hands FastAPI the same
-:class:`~memory_api.domain.models.Selection` the store already takes. Writing the fourteen
+:class:`~memory_api.domain.models.Selection` the store already takes. Writing the twelve
 query parameters out by hand would work exactly once: the first time somebody adds a field
 to ``Selection``, the HTTP surface would silently stop offering it.
 """
