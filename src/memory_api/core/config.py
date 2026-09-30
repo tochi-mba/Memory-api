@@ -23,7 +23,8 @@ ENV_PREFIX = "MEMORY_"
 PositiveInt = Annotated[int, Field(gt=0)]
 PositiveFloat = Annotated[float, Field(gt=0)]
 
-# Parity looks for these string literals in source when this tree becomes a sibling repo.
+# The health routes `api/routers/health.py` serves. The meta-repo's parity check looks for
+# these literals in this repository's source, and finds them in the router as well as here.
 ROUTES = ("/healthy", "/ready")
 
 
