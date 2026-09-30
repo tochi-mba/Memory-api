@@ -164,8 +164,11 @@ and inherit its trust. The response is still 201, carrying the original memory's
 A repeat may still carry a revised assessment of the same claim. If its `importance`,
 `confidence`, `source`, `occurred_at` or `expires_at` differ, those are written onto the
 existing memory, its `revision` goes up and a `revise` event is recorded; otherwise the
-memory is returned untouched. `valid_from` is not revised this way: to say a claim started
-being true at a different time, correct it.
+memory is returned untouched. A `valid_from` the repeat gives is revised the same way; one
+it leaves out keeps the stored start rather than meaning "now". When the existing memory is
+a correction, the version it replaced has its `valid_to` moved with it so the two still meet,
+and a start before that version's is a 409, as on a correction. An `expires_at` that would
+not follow the resulting `valid_from` is a 422 and changes nothing.
 
 **Credential-shaped content is refused** with a 422 that names keyring and never echoes
 what was sent. This applies to the whole request, structured `value` included, and to

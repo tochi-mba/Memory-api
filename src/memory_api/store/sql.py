@@ -460,7 +460,9 @@ class SQLStore:
     # But the caller may well have revised its assessment of that claim, and returning the
     # stored row unchanged threw those revisions away without a word: a caller setting an
     # expiry on something it had written before got a memory that never expires and no
-    # indication of it.
+    # indication of it. `valid_from` is revised too, but only when the repeat gives one: left
+    # out, it means "now" on a first write, and a repeat that said nothing about when the
+    # claim started must not move it.
     _REVISABLE = ("importance", "confidence", "source", "occurred_at", "expires_at")
 
     def _refresh(self, stored: Memory, request: MemoryInput) -> Memory:
@@ -470,15 +472,49 @@ class SQLStore:
             for field in self._REVISABLE
             if getattr(request, field) != getattr(stored, field)
         }
+        if request.valid_from is not None and request.valid_from != stored.valid_from:
+            changes["valid_from"] = request.valid_from
+            self._move_start(stored, request.valid_from)
         if not changes:
             return stored
         for field, value in changes.items():
             setattr(stored, field, value)
+        # The request was checked against its own `valid_from`, which may be absent. What
+        # has to hold is the pair the stored row ends up with: an expiry before the start is
+        # a row that no longer decodes, and every listing of the account would fail on it.
+        if stored.expires_at is not None and stored.expires_at <= (stored.valid_from or 0):
+            message = "expires_at must follow valid_from"
+            raise MemoryFault(message)
         stored.updated_at = self.clock()
         stored.revision += 1
         self._save(stored)
         self._event(stored.account_id, "revise", stored.id)
         return stored
+
+    def _move_start(self, stored: Memory, valid_from: float) -> None:
+        """Move a correction's start, and the end of what it replaced with it.
+
+        The two versions of a fact meet at one instant, which is what gives `as_of` exactly
+        one answer. Moving only the correction's start would open a gap or an overlap, and
+        starting before the version it replaced is refused here as it is on a correction.
+        A predecessor already erased by the sweep has no end left to move.
+        """
+        if stored.supersedes_id is None:
+            return
+        row = self.db.execute(
+            "SELECT * FROM memories WHERE account_id=? AND id=?",
+            (stored.account_id, stored.supersedes_id),
+        ).fetchone()
+        if row is None:
+            return
+        previous = self._decode(row)
+        if valid_from < (previous.valid_from or 0):
+            message = "A correction cannot start before the memory it replaces."
+            raise ConflictError(message)
+        previous.valid_to = valid_from
+        previous.updated_at = self.clock()
+        previous.revision += 1
+        self._save(previous)
 
     def write(
         self, account: str, asserted_by: str, request: MemoryInput, target: str | None = None

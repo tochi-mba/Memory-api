@@ -151,6 +151,82 @@ class TestWritingTheSameThingTwice:
 
         assert (after.revision, after.updated_at) == (before.revision, before.updated_at)
 
+    def test_a_repeated_write_moves_the_memory_to_the_valid_from_it_gives(
+        self, store: SQLStore, clock: FakeClock
+    ) -> None:
+        """Saying when a claim started being true is part of the claim's assessment.
+
+        Ignoring it left the memory valid from whenever it was first written, and the
+        `expires_at` sent alongside it was then folded onto that other start: an expiry
+        before the start is a row that no longer decodes, and every listing of the
+        account failed on it.
+        """
+        started = clock() - 1_000.0
+        first = remember(store, body="Lived in London")
+        again = remember(
+            store, body="Lived in London", valid_from=started, expires_at=clock() - 500.0
+        )
+
+        assert again == first
+        stored = store.get(ACCOUNT, first)
+        assert (stored.valid_from, stored.expires_at) == (started, clock() - 500.0)
+        assert stored.revision == 2
+        at = Selection(as_of=started + 1)
+        assert [row.id for row in store.listing(ACCOUNT, at).data] == [first]
+
+    def test_a_repeated_write_without_valid_from_keeps_the_stored_one(
+        self, store: SQLStore, clock: FakeClock
+    ) -> None:
+        first = remember(store, body="Lived in London", valid_from=clock() - 1_000.0)
+        remember(store, body="Lived in London")
+        assert store.get(ACCOUNT, first).valid_from == clock() - 1_000.0
+
+    def test_a_revised_expiry_must_still_follow_the_stored_valid_from(
+        self, store: SQLStore, clock: FakeClock
+    ) -> None:
+        first = remember(store, body="Lived in London")
+        with pytest.raises(MemoryFault, match="expires_at must follow valid_from"):
+            remember(store, body="Lived in London", expires_at=clock() - 1.0)
+        assert store.get(ACCOUNT, first).expires_at is None
+
+    def test_a_repeated_correction_moves_the_boundary_with_what_it_replaced(
+        self, store: SQLStore, clock: FakeClock
+    ) -> None:
+        old = remember(store, body="Lived in London")
+        clock.advance(1_000)
+        request = MemoryInput(title="Home city", body="Moved to Bristol")
+        new = store.write(ACCOUNT, AUTHOR, request, old).id
+        moved = clock() - 400.0
+
+        assert remember(store, body="Moved to Bristol", valid_from=moved) == new
+        assert store.get(ACCOUNT, new).valid_from == moved
+        assert store.get(ACCOUNT, old).valid_to == moved, "the two versions still meet"
+
+    def test_a_repeated_correction_cannot_start_before_what_it_replaced(
+        self, store: SQLStore, clock: FakeClock
+    ) -> None:
+        old = remember(store, body="Lived in London")
+        clock.advance(1_000)
+        request = MemoryInput(title="Home city", body="Moved to Bristol")
+        new = store.write(ACCOUNT, AUTHOR, request, old).id
+
+        with pytest.raises(ConflictError):
+            remember(store, body="Moved to Bristol", valid_from=clock() - 2_000.0)
+        assert store.get(ACCOUNT, new).valid_from == clock()
+
+    def test_a_repeated_correction_whose_predecessor_was_erased_still_moves(
+        self, store: SQLStore, clock: FakeClock
+    ) -> None:
+        old = remember(store, body="Lived in London")
+        clock.advance(1_000)
+        request = MemoryInput(title="Home city", body="Moved to Bristol")
+        new = store.write(ACCOUNT, AUTHOR, request, old).id
+        store.transition(ACCOUNT, old, "forget")
+        store.sweep(0)
+
+        remember(store, body="Moved to Bristol", valid_from=clock() - 2_000.0)
+        assert store.get(ACCOUNT, new).valid_from == clock() - 2_000.0
+
 
 class TestCorrections:
     def test_a_correction_retires_what_it_replaces_and_links_the_two(

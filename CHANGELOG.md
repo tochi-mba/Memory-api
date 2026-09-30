@@ -89,6 +89,12 @@ All notable changes to memory-api are recorded here. The format follows
   correction titled unlike its topic, a new topic was created and then left with nothing in
   it. The same path's duplicate check could return an earlier summary that was itself a
   member, which the merge then superseded with itself, leaving the topic nothing current.
+- **A repeated write respects the `valid_from` it gives.** It was ignored, so the memory
+  stayed valid from whenever it was first written, and an `expires_at` sent with it was
+  folded onto that other start: an expiry before the start made a row that no longer
+  decoded, and every listing of the account failed on it. The start is now revised like the
+  other assessment fields, a correction's predecessor keeps meeting it, and an expiry that
+  would not follow the stored start is refused.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,
