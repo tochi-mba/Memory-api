@@ -146,7 +146,7 @@ POST /v1/memory
 | `importance` | `5` | 1–10 |
 | `occurred_at` | `null` | epoch seconds — recorded and returned, never filtered on |
 | `valid_from` | now | epoch seconds |
-| `expires_at` | `null` | epoch seconds; must be after `valid_from` when both are given |
+| `expires_at` | `null` | epoch seconds; must be after `valid_from`, or after now when `valid_from` is left out |
 
 Bodies are `extra="forbid"`: an invented field is a 422, not a silent ignore. That is what
 stops an `account_id` or an `asserted_by` in a body from looking like it worked.
@@ -438,7 +438,7 @@ failing request and asserts it appears nowhere in the response.
 | 404 | `not-found` | No such memory, block or topic — **identical** to the answer for one belonging to another account. There is no 403 in this service: a 403 would confirm the id exists, which is the one fact that must not cross between accounts. |
 | 409 | `conflict` | A correction the store cannot apply: already superseded, forgotten, moved between scopes, or starting too early. |
 | 422 | `validation-failed` | The request body or query string broke a rule. Carries `errors`. |
-| 422 | `invalid-memory` | A search query with no words in it, or `after`/`before` on `search_memories`. |
+| 422 | `invalid-memory` | A search query with no words in it, `after`/`before` on `search_memories`, or an `expires_at` that does not follow the memory's `valid_from` once the store has filled it in (`expires_at must follow valid_from`). |
 | 422 | `credential-refused` | Credential-shaped content. The message names keyring. |
 | 500 | `internal-server-error` | A bug. The detail is withheld deliberately — quote the `request_id`. |
 | 503 | `keyring-unreachable` | keyring's signing keys could not be fetched. Carries `Retry-After: 5`. Not your token. |

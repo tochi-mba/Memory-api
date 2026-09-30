@@ -106,6 +106,12 @@ All notable changes to memory-api are recorded here. The format follows
   WARNING. Both were silent, success or failure. The `memory-api` entry point now routes
   the service's own loggers to uvicorn's handler, without which nothing below WARNING
   would have been printed.
+- **An `expires_at` in the past with no `valid_from` is a 422, not a 500.** The request
+  passed validation because it named no start, and the store's "now" was checked only by
+  building the stored model, whose error nothing mapped. Writes, corrections, batch `ADD`
+  and `UPDATE`, and the internal write routes now answer `invalid-memory` with
+  `expires_at must follow valid_from`, the same refusal a repeated write gets, and store
+  nothing.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,
