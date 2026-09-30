@@ -112,6 +112,12 @@ All notable changes to memory-api are recorded here. The format follows
   and `UPDATE`, and the internal write routes now answer `invalid-memory` with
   `expires_at must follow valid_from`, the same refusal a repeated write gets, and store
   nothing.
+- **Non-finite numbers are refused.** `NaN`, `Infinity`, `-Infinity` and literals that
+  overflow to infinity (`1e400`) are a 422 `validation-failed` in every request body and
+  query string: `valid_from`, `expires_at` and `occurred_at` on every write route, and
+  `as_of` on both views. They were accepted, SQLite stored a NaN as NULL, and a memory
+  written with `valid_from: NaN` was answered 201 and then never appeared anywhere. The
+  OpenAPI document now describes each of those fields as finite epoch seconds.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,

@@ -144,9 +144,15 @@ POST /v1/memory
 | `trust` | `stated` | `stated` \| `observed` \| `inferred` \| `untrusted` |
 | `confidence` | `1.0` | 0–1; breaks ranking ties, nothing else |
 | `importance` | `5` | 1–10 |
-| `occurred_at` | `null` | epoch seconds — recorded and returned, never filtered on |
-| `valid_from` | now | epoch seconds |
-| `expires_at` | `null` | epoch seconds; must be after `valid_from`, or after now when `valid_from` is left out |
+| `occurred_at` | `null` | finite epoch seconds — recorded and returned, never filtered on |
+| `valid_from` | now | finite epoch seconds |
+| `expires_at` | `null` | finite epoch seconds; must be after `valid_from`, or after now when `valid_from` is left out |
+
+**Every number must be finite.** `NaN`, `Infinity` and `-Infinity` — and a literal too
+large for a double, such as `1e400`, which parses as infinity — are a 422
+`validation-failed`, in a body or in a query string. Python's JSON parser accepts them and
+SQLite stores a NaN as NULL, so a memory written with `valid_from: NaN` would otherwise be
+answered 201 and then never appear in either view.
 
 Bodies are `extra="forbid"`: an invented field is a 422, not a silent ignore. That is what
 stops an `account_id` or an `asserted_by` in a body from looking like it worked.
@@ -337,7 +343,7 @@ ones that got through a typo".
 | `include_history` | `false` | Superseded versions. Audit view only. |
 | `include_inferred` | `true` | Set false to drop `trust: inferred`. Both views. |
 | `include_stated` | `true` | Set false to drop `trust: stated`. Both views. |
-| `as_of` | now | Epoch seconds. What was true at that instant. |
+| `as_of` | now | Finite epoch seconds. What was true at that instant. |
 | `q` | — | ≤ 1000 characters. Full-text query. |
 
 `as_of` is how you answer a question about a time before a correction was made. In the
@@ -437,7 +443,7 @@ failing request and asserts it appears nowhere in the response.
 | 401 | `unauthorized` | The token was missing (`a keyring token is required` on the person-facing routes) or not accepted (`token refused`, whatever the reason). `/v1/internal` answers `token refused` to every failure, a missing header included. |
 | 404 | `not-found` | No such memory, block or topic — **identical** to the answer for one belonging to another account. There is no 403 in this service: a 403 would confirm the id exists, which is the one fact that must not cross between accounts. |
 | 409 | `conflict` | A correction the store cannot apply: already superseded, forgotten, moved between scopes, or starting too early. |
-| 422 | `validation-failed` | The request body or query string broke a rule. Carries `errors`. |
+| 422 | `validation-failed` | The request body or query string broke a rule, including a number that is not finite. Carries `errors`. |
 | 422 | `invalid-memory` | A search query with no words in it, `after`/`before` on `search_memories`, or an `expires_at` that does not follow the memory's `valid_from` once the store has filled it in (`expires_at must follow valid_from`). |
 | 422 | `credential-refused` | Credential-shaped content. The message names keyring. |
 | 500 | `internal-server-error` | A bug. The detail is withheld deliberately — quote the `request_id`. |

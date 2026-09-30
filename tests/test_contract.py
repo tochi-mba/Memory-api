@@ -186,6 +186,23 @@ class TestRequestBodies:
             assert component.get("additionalProperties") is False, name
 
 
+def test_every_timestamp_a_caller_sends_is_published_as_finite(schema: dict[str, Any]) -> None:
+    # JSON Schema has no keyword for "finite", and Python's JSON parser accepts NaN and
+    # Infinity, so the refusal is stated in the description a client and a model read.
+    memory = schema["components"]["schemas"]["MemoryInput"]["properties"]
+    for field in ("valid_from", "expires_at", "occurred_at"):
+        assert memory[field]["description"].startswith("Finite epoch seconds"), field
+    as_of = [
+        parameter
+        for _, _, operation in operations(schema)
+        for parameter in operation.get("parameters", [])
+        if parameter["name"] == "as_of"
+    ]
+    assert len(as_of) == 4, "both views, person-facing and internal"
+    for parameter in as_of:
+        assert parameter["description"].startswith("Finite epoch seconds")
+
+
 def test_the_literal_paths_are_declared_before_the_parameterised_one() -> None:
     """Route order, read off the router rather than off a comment.
 

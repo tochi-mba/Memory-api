@@ -368,6 +368,76 @@ class TestAnExpiryBeforeTheStartIsTheCallersMistake:
         self.assert_refused(response)
 
 
+NON_FINITE = ["NaN", "Infinity", "-Infinity"]
+TIMESTAMPS = ["valid_from", "expires_at", "occurred_at"]
+
+
+def assert_validation_failed(response: Response, field: str) -> None:
+    assert response.status_code == 422, response.text
+    assert response.headers["content-type"].startswith("application/problem+json")
+    body = response.json()
+    assert body["type"].endswith("/validation-failed")
+    assert any(error["location"].endswith(field) for error in body["errors"]), body
+
+
+class TestANonFiniteNumberIsRefused:
+    """NaN and the infinities are refused wherever a number is taken.
+
+    Python's JSON parser accepts them, and SQLite stores a NaN as NULL. A memory written
+    with `valid_from: NaN` was answered 201 and then matched no validity window, so it
+    never appeared in either view: data loss that looked like success.
+    """
+
+    @staticmethod
+    def body(field: str, value: str, extra: str = "") -> str:
+        return f'{{"title": "Home city", "body": "Bristol"{extra}, "{field}": {value}}}'
+
+    @pytest.mark.parametrize("value", NON_FINITE)
+    @pytest.mark.parametrize("field", TIMESTAMPS)
+    async def test_on_a_write(self, client: AsyncClient, field: str, value: str) -> None:
+        response = await client.post(
+            "/v1/memory",
+            headers={**bearer(), "content-type": "application/json"},
+            content=self.body(field, value),
+        )
+        assert_validation_failed(response, field)
+        listed = await client.get("/v1/memory?include_history=true", headers=bearer())
+        assert listed.json()["data"] == [], "nothing was stored"
+
+    @pytest.mark.parametrize("value", NON_FINITE)
+    @pytest.mark.parametrize("field", TIMESTAMPS)
+    async def test_on_a_correction(self, client: AsyncClient, field: str, value: str) -> None:
+        old = await write(client, body="Lived in London")
+        response = await client.post(
+            f"/v1/memory/{old['id']}/correct",
+            headers={**bearer(), "content-type": "application/json"},
+            content=self.body(field, value),
+        )
+        assert_validation_failed(response, field)
+
+    @pytest.mark.parametrize("action", ["ADD", "UPDATE"])
+    @pytest.mark.parametrize("field", TIMESTAMPS)
+    async def test_in_a_batch(self, client: AsyncClient, field: str, action: str) -> None:
+        old = await write(client, body="Lived in London")
+        memory_id = f', "memory_id": "{old["id"]}"' if action == "UPDATE" else ""
+        content = (
+            f'{{"decisions": [{{"action": "{action}"{memory_id}, '
+            f'"memory": {self.body(field, "NaN")}}}]}}'
+        )
+        response = await client.post(
+            "/v1/memory/batch",
+            headers={**bearer(), "content-type": "application/json"},
+            content=content,
+        )
+        assert_validation_failed(response, field)
+
+    @pytest.mark.parametrize("value", ["nan", "inf", "-inf", "1e400"])
+    @pytest.mark.parametrize("path", ["/v1/memory", "/v1/memory/search"])
+    async def test_as_of_on_both_views(self, client: AsyncClient, path: str, value: str) -> None:
+        response = await client.get(path, params={"as_of": value}, headers=bearer())
+        assert_validation_failed(response, "as_of")
+
+
 class TestForgettingEverything:
     async def test_it_reports_how_many_memories_it_forgot_and_leaves_nothing_behind(
         self, client: AsyncClient

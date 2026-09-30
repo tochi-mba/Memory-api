@@ -13,7 +13,17 @@ ShortText = Annotated[str, Field(min_length=1, max_length=200)]
 
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True)
+    """The base of every request and stored model.
+
+    `allow_inf_nan=False` is here, once, rather than on each field. Python's JSON parser
+    accepts `NaN` and `Infinity` (and `1e400` becomes infinity), and SQLite stores a NaN as
+    NULL. A memory written with `valid_from: NaN` was answered 201 and then fell outside
+    every validity window, so it never appeared in either view: data loss that looked like
+    success. No number this service takes means anything when it is not finite, and a
+    field added later is covered without anybody remembering to.
+    """
+
+    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True, allow_inf_nan=False)
 
 
 class MemoryInput(StrictModel):
@@ -28,9 +38,15 @@ class MemoryInput(StrictModel):
     trust: Trust = "stated"
     confidence: Annotated[float, Field(ge=0, le=1)] = 1.0
     importance: Annotated[int, Field(ge=1, le=10)] = 5
-    occurred_at: float | None = None
-    valid_from: float | None = None
-    expires_at: float | None = None
+    occurred_at: float | None = Field(
+        default=None, description="Finite epoch seconds. Recorded and returned, never filtered on."
+    )
+    valid_from: float | None = Field(
+        default=None, description="Finite epoch seconds from which this is true. Defaults to now."
+    )
+    expires_at: float | None = Field(
+        default=None, description="Finite epoch seconds after which this is no longer retrieved."
+    )
 
     @model_validator(mode="after")
     def validate_scope(self) -> Self:
@@ -157,7 +173,9 @@ class Selection(StrictModel):
     include_history: bool = False
     include_inferred: bool = True
     include_stated: bool = True
-    as_of: float | None = None
+    as_of: float | None = Field(
+        default=None, description="Finite epoch seconds: answer as things stood at that instant."
+    )
     q: Annotated[str, Field(max_length=1000)] | None = None
 
 
