@@ -235,7 +235,7 @@ stored counters: one drifts the moment a memory is forgotten, superseded or eras
 index that overstates what it holds sends the model looking for something that is not there.
 
 The `HAVING memory_count > 0` clause is the boundary, and `memory_count` counts only
-members that are **not** untrusted. So **a topic made entirely of unconfirmed memories never
+members that are usable: **not** untrusted, or untrusted and since confirmed. So **a topic made entirely of unconfirmed memories never
 reaches the index, and cannot be expanded either.** Anybody who can get a paragraph in front
 of an extraction pass — a web page, a forwarded email — can propose a memory. Storing it is
 fine. Naming a topic after it, and putting that name in front of the model every turn, is

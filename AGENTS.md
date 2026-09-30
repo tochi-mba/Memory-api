@@ -30,7 +30,9 @@ that looks like one.
   `check_same_thread` stays on: it is the guard that proves the discipline holds.
 - Every error is `application/problem+json` with a `request_id`, and `detail` never echoes
   the offending value.
-- A topic made entirely of untrusted memories never reaches the index. Its title came from
-  untrusted content, and the index goes into a prompt.
+- A topic made entirely of unconfirmed untrusted memories never reaches the index. Its
+  title came from untrusted content, and the index goes into a prompt.
+- Confirming a memory stamps `confirmed_at` and never rewrites `trust`. Retrieval and the
+  index gate on the confirmation, so provenance survives being vouched for.
 - `operation_id`s are public API -- they become MCP tool names. A contract test pins the set.
 - No `pragma: no cover`. No setting that disables verification.
