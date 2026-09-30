@@ -65,12 +65,12 @@ a test that passes alone and fails after another one wrote a memory.
 | `test_store.py` | The store one call at a time: deduplication, the several ways a correction is refused, transitions, batch atomicity, what a listing includes, cursor paging, search, retrieval ranking, blocks, the sweep, the database file's `0600` mode, and that an older database gains the column it lacks and a topic for every memory. |
 | `test_topics.py` | Which topic a memory lands in, what the index is allowed to say, the untrusted-topic boundary, rewriting a topic's words, a correction rewriting its topic's line, and the topic routes over HTTP. |
 | `test_internal.py` | The two-credential `/v1/internal` surface: a sibling acting for the person whose token it holds, every refusal identical, another account a 404, and an unconfigured service refused. |
-| `test_sweeper.py` | The erasure loop: it waits before its first pass, sweeps on the interval with the configured grace, survives a failed pass, and stops when asked. An interval of zero never starts it. |
-| `test_consolidate.py` | Idle consolidation: which idle memories merge, which are left alone (a lone one, a recently used pair, untrusted ones, a body that looks like a secret, memories in another scope, profile or session), that a zero window rewrites nothing, and the loop's lifecycle. |
+| `test_sweeper.py` | The erasure loop: it waits before its first pass, sweeps on the interval with the configured grace, survives a failed pass, logs one line per pass (the failure by type name only), and stops when asked. An interval of zero never starts it. |
+| `test_consolidate.py` | Idle consolidation: which idle memories merge, which are left alone (a lone one, a recently used pair, untrusted ones, a body that looks like a secret, memories in another scope, profile or session), that a zero window rewrites nothing, and the loop's lifecycle and per-pass log line. |
 | `test_domain.py` | The pure rules: a memory that must agree with itself, the credential refusal, topic keys, similarity, choice and summaries. |
 | `test_errors.py` | One error shape from all four sources — a domain rule, FastAPI's validation, Starlette's router, and a bug — plus the request id and the two things a body must never contain. |
 | `test_worker.py` | The thread the database lives on. |
-| `test_config.py`, `test_health.py`, `test_whoami.py` | Unknown `MEMORY_*` refused, a bad audience refused, the probes, and the token echo. |
+| `test_config.py`, `test_health.py`, `test_whoami.py` | Unknown `MEMORY_*` refused, a bad audience refused, the entry point's logging setup, the probes, and the token echo. |
 
 ## `test_memory_eval.py` — the quality contract
 

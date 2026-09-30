@@ -89,3 +89,17 @@ def test_configured_services_are_named() -> None:
     token = "k" * 32
     named = ServiceAuthenticator({"lucy-api": token})
     assert named.configured == ("lucy-api",)
+
+
+def test_the_served_process_routes_the_services_own_log_lines_to_uvicorns_handler() -> None:
+    # Uvicorn configures only its own loggers; without this, the sweeper's and the
+    # consolidator's INFO lines would reach Python's last-resort handler and be dropped.
+    from memory_api.__main__ import log_config
+
+    config = log_config("info")
+    assert config["loggers"]["memory_api"] == {
+        "handlers": ["default"],
+        "level": "INFO",
+        "propagate": False,
+    }
+    assert "default" in config["handlers"]

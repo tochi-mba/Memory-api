@@ -7,6 +7,7 @@ sees the summary, and they remain listable in the audit view.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -266,3 +267,19 @@ def test_a_summary_is_never_deduplicated_into_a_member_it_supersedes(
     assert [(row.kind, row.body) for row in retrieved] == [("summary", "Earl Grey")]
     assert retrieved[0].superseded_by_id is None
     assert retrieved[0].source == "consolidation"
+
+
+async def test_every_pass_says_what_it_did_and_a_failure_says_only_its_type(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    store, sleep = Recorder(fail_times=1), Ticks(allowed=2)
+    caplog.set_level(logging.INFO, logger="memory_api.core.consolidator")
+
+    with pytest.raises(asyncio.CancelledError):
+        await run_consolidator(store, idle_seconds=600.0, interval_seconds=60.0, sleep=sleep)
+
+    assert [(record.levelname, record.getMessage()) for record in caplog.records] == [
+        ("WARNING", "consolidation_failed error_type=RuntimeError"),
+        ("INFO", "consolidation_completed summaries=1"),
+    ]
+    assert "locked" not in caplog.text

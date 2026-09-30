@@ -95,6 +95,12 @@ All notable changes to memory-api are recorded here. The format follows
   decoded, and every listing of the account failed on it. The start is now revised like the
   other assessment fields, a correction's predecessor keeps meeting it, and an expiry that
   would not follow the stored start is refused.
+- **The sweeper and the consolidator say what they did.** Each pass logs
+  `sweep_completed erased=N` or `consolidation_completed summaries=N` at INFO, and a failed
+  pass logs `sweep_failed` or `consolidation_failed` with the exception's type name at
+  WARNING. Both were silent, success or failure. The `memory-api` entry point now routes
+  the service's own loggers to uvicorn's handler, without which nothing below WARNING
+  would have been printed.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,

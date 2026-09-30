@@ -11,13 +11,15 @@ The originals stay listable. Consolidation is not erasure.
 
 Same reason as the sweeper. A locked database for a minute would otherwise end ranking
 hygiene for as long as the process lives. Cancellation is still ``BaseException`` and is
-not swallowed: that is shutdown.
+not swallowed: that is shutdown. Every pass logs ``consolidation_completed summaries=N`` or
+``consolidation_failed error_type=...``, the type name only, as the sweeper does.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
@@ -31,6 +33,9 @@ if TYPE_CHECKING:
         """
 
         async def call(self, operation: Callable[[Any], int]) -> int: ...
+
+
+logger = logging.getLogger(__name__)
 
 
 async def run_consolidator(
@@ -47,8 +52,12 @@ async def run_consolidator(
     """
     while True:
         await sleep(interval_seconds)
-        with contextlib.suppress(Exception):
-            await store.call(lambda connection: connection.consolidate(idle_seconds))
+        try:
+            written = await store.call(lambda connection: connection.consolidate(idle_seconds))
+        except Exception as exc:
+            logger.warning("consolidation_failed error_type=%s", type(exc).__name__)
+        else:
+            logger.info("consolidation_completed summaries=%d", written)
 
 
 def start_consolidator(
