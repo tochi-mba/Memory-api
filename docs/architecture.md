@@ -10,7 +10,8 @@ operating manual for working inside it.
 src/memory_api/
   api/      routers, dependencies, wire schemas, problem+json errors, middleware
   auth/     token verification: a thin adapter over the family's keyring_client
-  core/     configuration, the composition root, the request-id context
+  core/     configuration, the composition root, the request-id context, and the two
+            background passes (the sweeper and the consolidator)
   domain/   the models, the topic rules, the secret refusal, the error vocabulary
   store/    the schema and every query, behind one worker thread
 ```
@@ -18,7 +19,7 @@ src/memory_api/
 Dependencies point inward. `domain/` is pure — models, clustering rules and the credential
 check, with no I/O, no clock and no configuration — which is what lets the rules be read and
 tested as functions. `core/container.py` is the composition root: the JWKS client, the
-verifier and the store worker are constructed there, once, and handed to the app, so every
+verifier, the service-token authenticator and the store worker are constructed there, once, and handed to the app, so every
 part of the service is testable by substitution.
 
 `api/schemas.py` and `domain/models.py` are separate on purpose. The domain models are what
@@ -103,8 +104,8 @@ rather than merely unlinked.
 | `memory_search` | The FTS5 index over title, body and serialised value. |
 | `memory_blocks` | The always-in-context blocks, keyed `(account_id, label)`. |
 | `topics` | One row per subject, unique on `(account_id, profile, key)`. |
-| `memory_links` | `supersedes` edges, written when a correction lands. |
-| `memory_events` | Append-only: what happened, when, to which id — `add`, `correct`, `forget`, `restore`, `confirm`, `erase`, `topic_created`, `topic_summarised`, `block_write`, `block_delete`, `forget_all`. |
+| `memory_links` | `supersedes` edges, written when a correction lands and when consolidation folds memories into a summary. |
+| `memory_events` | Append-only: what happened, when, to which id — `add`, `correct`, `revise`, `forget`, `restore`, `confirm`, `erase`, `consolidate`, `topic_created`, `topic_summarised`, `block_write`, `block_delete`, `forget_all`. |
 
 `memory_links` and `memory_events` have **no read surface yet** — nothing queries them, and
 no route returns them. They are written because the record is worth having from the first
@@ -116,9 +117,11 @@ was erased.
 `PRAGMA foreign_keys=ON` is set and no table declares one. Keeping it on costs nothing and
 means the first foreign key to be added behaves.
 
-Startup runs `_add_missing_columns`, which adds `topic_id` if an older database lacks it.
-`CREATE TABLE IF NOT EXISTS` does nothing to a table that already exists, so without this a
-column added after the first release would silently never appear.
+Startup runs `_add_missing_columns`, which adds `topic_id` if an older database lacks it,
+then gives every memory that has no topic one, oldest first. `CREATE TABLE IF NOT EXISTS`
+does nothing to a table that already exists, so without this a column added after the first
+release would silently never appear; without the backfill an upgraded database would report
+no topics at all, because the index is an inner join on `topic_id`.
 
 ## Corrections are append-only, and a memory is never hard-deleted
 
@@ -280,7 +283,9 @@ legitimate sentence is storing somebody's API key in plaintext for ever.
 - **Not administrable.** There is no route that lists accounts or reads somebody else's
   memories by naming them. A sibling may act on a person's behalf only while holding that
   person's own token.
-- **Not multi-process.** One connection, one writer, one thread.
+- **Not multi-process.** One connection, one writer, one thread. SQLite will let a second
+  process open the same file, and [docs/operations.md](operations.md#erasure) says what to
+  turn off if you do, but nothing here is designed or tested for it.
 - **Not encrypted.** The database holds a person's own words in plaintext. See
   [docs/operations.md](operations.md).
 - **Not a source of instructions.** Everything it returns is data. See
