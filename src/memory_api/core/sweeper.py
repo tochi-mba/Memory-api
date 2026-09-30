@@ -46,9 +46,6 @@ if TYPE_CHECKING:
         async def call(self, operation: Callable[[Any], int]) -> int: ...
 
 
-DAY_SECONDS = 86_400
-
-
 async def run_sweeper(
     store: Sweepable,
     *,
