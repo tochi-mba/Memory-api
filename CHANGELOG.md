@@ -73,6 +73,9 @@ All notable changes to memory-api are recorded here. The format follows
   promoted a memory from `untrusted` to `stated`. It has not done that since confirming
   stopped rewriting provenance; the description now says it stamps `confirmed_at` and
   leaves `trust` alone, on the internal route too.
+- `search_memories`'s description listed four exclusions where retrieval applies six. It
+  now names forgotten memories and other profiles' and sessions' memories too, and says
+  that a search with no `profile` returns account-wide memories only.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,
