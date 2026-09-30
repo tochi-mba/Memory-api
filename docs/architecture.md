@@ -140,6 +140,11 @@ believes something; a forget is reversible; and a correction can be audited agai
 replaced. Delete-then-add gets you none of them, which is why `correct_memory` exists and
 why the route description tells callers never to do the other thing.
 
+A correction that is usable (not untrusted, or confirmed) and still current also rewrites
+its topic's summary from its own first sentence and clears `last_summarised_at`, because
+the index line is read before any topic is expanded and must not keep stating what was
+corrected.
+
 Forgetting is a tombstone — `forgotten_at` — not a delete, so it can be undone. The **only**
 thing that removes a memory row is `SQLStore.sweep`, which erases rows whose grace period
 has run out, drops their index entries and links, and truncates the WAL so erased text does
