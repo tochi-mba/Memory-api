@@ -356,6 +356,7 @@ no path by which a memory's text reaches a log line.
 | --- | --- | --- |
 | Every request 401 | `MEMORY_KEYRING_ISSUER` or `MEMORY_AUDIENCE` disagrees with what keyring minted | Make the issuer match keyring's `KEYRING_ISSUER` exactly, and mint with `{"audience": "<MEMORY_AUDIENCE>"}`. |
 | Every request 503 with `Retry-After` | keyring's key document cannot be fetched | Check `MEMORY_KEYRING_JWKS_URL` is reachable from this host. `/ready` says which dependency. |
+| Every `/v1/internal` call 401 while person-facing calls work | The calling service's token is not in `MEMORY_SERVICE_TOKENS` (empty refuses everyone), or `X-Keyring-User-Token` is missing or not a memory-api token | Add the sibling's token to `MEMORY_SERVICE_TOKENS` and restart; send the person's own token in the header. The refusal is identical for every cause, by design. |
 | Startup error naming `MEMORY_*` variables | A typo under the prefix | The message names every offender at once. |
 | Startup error about the audience | `MEMORY_AUDIENCE` is empty, padded with whitespace, or contains a dot | Give it a plain name. |
 | `unable to open database file` | The directory is not writable by the service user | The parent directory is created at startup; it still has to be creatable. Check ownership of the volume. |
