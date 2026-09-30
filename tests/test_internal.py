@@ -182,3 +182,30 @@ async def test_an_expiry_before_the_start_is_a_422_on_the_internal_writes(
     )
     assert response.status_code == 422, response.text
     assert response.json()["detail"] == "expires_at must follow valid_from"
+
+
+@pytest.mark.parametrize("field", ["valid_from", "expires_at", "occurred_at"])
+@pytest.mark.parametrize("correcting", [False, True])
+async def test_a_non_finite_timestamp_is_refused_on_the_internal_writes(
+    internal: AsyncClient, field: str, *, correcting: bool
+) -> None:
+    path = "/v1/internal/memory"
+    if correcting:
+        old = await internal.post(path, headers=headers(), json={"title": "Home city"})
+        path += f"/{old.json()['id']}/correct"
+    response = await internal.post(
+        path,
+        headers={**headers(), "content-type": "application/json"},
+        content=f'{{"title": "Home city", "body": "x", "{field}": NaN}}',
+    )
+    assert response.status_code == 422, response.text
+    assert response.json()["type"].endswith("/validation-failed")
+
+
+@pytest.mark.parametrize("path", ["/v1/internal/memory", "/v1/internal/memory/search"])
+async def test_a_non_finite_as_of_is_refused_on_the_internal_reads(
+    internal: AsyncClient, path: str
+) -> None:
+    response = await internal.get(path, params={"as_of": "nan"}, headers=headers())
+    assert response.status_code == 422, response.text
+    assert response.json()["type"].endswith("/validation-failed")
