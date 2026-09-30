@@ -133,13 +133,14 @@ DATABASE_FILE_MODE = 0o600
 SIDECARS = ("-wal", "-shm")
 
 HALF_LIFE_SECONDS = 30 * 86400
-MIN_MERGE = 2
-"""A lone idle memory is left alone; merging one fact into a summary of itself is noise."""
 """How long until a memory's recency term is worth half what it was.
 
 A plain ``exp(-dt / tau)`` would make this an e-folding constant rather than a half-life,
 and the weight would halve at about twenty-one days instead of thirty. The name is the one
 people reason about, so the arithmetic below carries the ``ln 2`` that makes it true."""
+
+MIN_MERGE = 2
+"""A lone idle memory is left alone; merging one fact into a summary of itself is noise."""
 
 
 class SQLStore:
