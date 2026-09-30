@@ -33,7 +33,8 @@ make run          # http://127.0.0.1:8009/docs
 uses; it reads `MEMORY_HOST`, `MEMORY_PORT` and `MEMORY_LOG_LEVEL`.
 
 A running keyring on 8001 is needed only for real tokens — the test suite mints its own
-against `keyring_client.testing` and never touches the network. With one running:
+against `keyring_client.testing` and never touches the network. With one running, `KEYRING`
+set to its base URL and `SESSION` to a session token from signing in to it:
 
 ```bash
 TOKEN=$(curl -sX POST "$KEYRING/v1/auth/service-token" \
