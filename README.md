@@ -16,8 +16,9 @@ corrected.
 
 **Kinds.** An `episode` is something that happened. A `fact` is something that is the
 case. A `procedure` is how to do something. A `summary` stands in for several of the
-others. Only facts and procedures are retrieved across sessions by default, because "we
-talked about tour dates on Tuesday" is rarely what you want surfacing three weeks later.
+others. Facts, procedures and summaries are retrieved across sessions; an episode is
+retrieved only in the session it belongs to, because "we talked about tour dates on
+Tuesday" is rarely what you want surfacing three weeks later.
 
 **Scopes.** `account` is everywhere, `profile` is one profile, `session` is one
 conversation. A work assistant and a home assistant are different people, and their
