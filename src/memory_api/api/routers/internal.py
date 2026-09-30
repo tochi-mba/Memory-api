@@ -66,7 +66,7 @@ async def create_memory(request: MemoryInput, caller: ServiceCallerDep, store: S
     operation_id="internal_list_memories",
     summary="List a person's memories with provenance",
     response_model=Page[Memory],
-    responses=_VALIDATED,
+    responses=_ADDRESSED,
     description="The audit view, including untrusted claims. " + FOR_A_SIBLING,
 )
 async def list_memories(

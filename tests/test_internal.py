@@ -154,3 +154,16 @@ async def test_an_unconfigured_service_is_refused(keyring: FakeKeyring) -> None:
     ):
         response = await http.get("/v1/internal/memory/search", headers=headers())
     assert response.status_code == 401
+
+
+async def test_a_listing_cursor_that_is_not_the_persons_memory_answers_404(
+    internal: AsyncClient,
+) -> None:
+    theirs = await internal.post(
+        "/v1/internal/memory", headers=headers(OTHER_ACCOUNT), json={"title": "Home city"}
+    )
+    listed = await internal.get(
+        "/v1/internal/memory", params={"after": theirs.json()["id"]}, headers=headers()
+    )
+    assert listed.status_code == 404
+    assert listed.headers["content-type"].startswith("application/problem+json")
