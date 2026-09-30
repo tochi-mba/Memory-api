@@ -254,8 +254,9 @@ enough to bring the topic in; the rest stay counted separately as `unconfirmed`.
 
 A topic that keeps collecting facts nobody has needed is retrieval noise: the newest of
 them wins rather than the thing they all jointly say. A background pass groups current
-trusted facts, procedures and summaries in one topic whose last access is older than the
-configured idle window, writes one `kind=summary` row, and supersedes the originals. The
+trusted facts, procedures and summaries in one topic and one compartment (scope, profile and
+session) whose last access is older than the configured idle window, writes one
+`kind=summary` row, and supersedes the originals. The
 audit view still has them. Untrusted rows are never merged, and a combined body that looks
 like a credential is skipped rather than stored.
 

@@ -79,6 +79,11 @@ All notable changes to memory-api are recorded here. The format follows
 - `internal_list_memories` declares its 404 in the OpenAPI document. A cursor naming a
   memory that is not the person's has always answered 404 there, as it does on
   `list_memories`, but the published contract left it out.
+- **Consolidation stays inside a compartment.** It grouped idle memories by topic alone,
+  and a profile's topic also holds each of its sessions' memories, so the summary took the
+  oldest member's scope: one session's facts surfaced in every session of the profile, or
+  were folded into another session and disappeared from their own. Only memories with the
+  same scope, profile and session merge now.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,

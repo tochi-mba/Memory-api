@@ -180,3 +180,42 @@ def test_a_summary_stays_on_the_members_topic(store: SQLStore, clock: FakeClock)
     assert store.consolidate(30 * DAY) == 1
     summary = store.listing(ACCOUNT, Selection(), retrieval=True).data[0]
     assert summary.topic_id == original
+
+
+def _session_fact(store: SQLStore, session_id: str, body: str) -> None:
+    store.write(
+        ACCOUNT,
+        ACCOUNT,
+        MemoryInput(
+            title="Favourite tea", body=body, scope="session", profile="home", session_id=session_id
+        ),
+    )
+
+
+def test_a_session_memory_is_never_merged_into_another_compartment(
+    store: SQLStore, clock: FakeClock
+) -> None:
+    # One topic, three compartments: the profile, and two sessions inside it. Merging across
+    # them would hand the summary the oldest member's scope, so a session's facts would
+    # surface in every session of the profile, or vanish into a session they never belonged
+    # to -- the move a correction is refused for.
+    store.write(
+        ACCOUNT,
+        ACCOUNT,
+        MemoryInput(title="Favourite tea", body="Earl Grey", scope="profile", profile="home"),
+    )
+    _session_fact(store, "monday", "Assam in the morning")
+    clock.advance(1)
+    _session_fact(store, "monday", "Lapsang after dinner")
+    _session_fact(store, "tuesday", "Rooibos on Tuesdays")
+    clock.advance(40 * DAY)
+
+    assert store.consolidate(30 * DAY) == 1
+
+    def bodies(session_id: str) -> list[str]:
+        selection = Selection(profile="home", session_id=session_id)
+        return sorted(row.body for row in store.listing(ACCOUNT, selection, retrieval=True).data)
+
+    assert bodies("monday") == ["Assam in the morning; Lapsang after dinner", "Earl Grey"]
+    assert bodies("tuesday") == ["Earl Grey", "Rooibos on Tuesdays"]
+    assert bodies("wednesday") == ["Earl Grey"]

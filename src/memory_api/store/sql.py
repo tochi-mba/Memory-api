@@ -744,16 +744,23 @@ class SQLStore:
             "ORDER BY account_id, topic_id, created_at, id",
             (cutoff,),
         ).fetchall()
-        groups: dict[tuple[str, str], list[Memory]] = {}
+        # A topic spans compartments: account-wide topics hold only account memories, but a
+        # profile's topic holds that profile's memories and every one of its sessions'.
+        # Grouping by topic alone handed the summary its oldest member's scope, so a
+        # session's facts surfaced in every session of the profile, or were folded into a
+        # session they never belonged to and vanished from their own. That is the move a
+        # correction is refused for, so a merge never crosses a compartment either.
+        groups: dict[tuple[str, str, str, str | None, str | None], list[Memory]] = {}
         for row in rows:
             memory = self._decode(row)
             topic_id = memory.topic_id
             if topic_id is None:
                 continue
-            groups.setdefault((memory.account_id, topic_id), []).append(memory)
+            compartment = (memory.scope, memory.profile, memory.session_id)
+            groups.setdefault((memory.account_id, topic_id, *compartment), []).append(memory)
         written = 0
         with self.db:
-            for (account, topic_id), members in groups.items():
+            for (account, topic_id, *_compartment), members in groups.items():
                 if len(members) < MIN_MERGE:
                     continue
                 if self._merge_topic(account, topic_id, members):
