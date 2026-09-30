@@ -178,6 +178,13 @@ The retired memory keeps its row and gains `valid_to` (the new memory's `valid_f
 `superseded_by_id`; the new one carries `supersedes_id` and **inherits the old one's
 topic**, so a fact is never separated from its own history. `valid_from` defaults to now.
 
+A correction also rewrites its topic's line in the index: the summary becomes the first
+sentence of the correction's body (or its title, when the body is empty), and
+`last_summarised_at` is cleared to say the line is a placeholder again. Without this the
+index, which an assistant reads before any topic and is told to believe, would go on
+stating what the correction said was wrong. An untrusted correction rewrites nothing until
+it is confirmed, and one that has since been corrected again or forgotten rewrites nothing.
+
 This is what makes `?as_of=` answerable, and it is why delete-then-add is wrong: it throws
 away the fact that something used to be true, and a question about last year then has no
 answer at all.
@@ -281,16 +288,20 @@ unconfirmed untrusted memories never appears at all** — its title was written 
 else supplied, and the title is the part that reaches the prompt.
 
 `GET /v1/memory/topics/{topic_id}` expands one: the topic plus its memories, most recently
-used first, unconfirmed untrusted members left out, `limit` 1–100 (default 50). A topic with nothing
-current behind it answers 404.
+used first, unconfirmed untrusted members left out, `limit` 1–100 (default 50). A topic
+with nothing current and usable behind it answers 404.
 
-`PATCH /v1/memory/topics/{topic_id}` is what a consolidation pass writes back: `title`,
-`summary`, or both. Sending neither is a 422. **Membership is not editable from here**, and
+`PATCH /v1/memory/topics/{topic_id}` is what a summarising pass, typically a model reading
+the expanded topic, writes back: `title`, `summary`, or both, and it stamps
+`last_summarised_at`. Sending neither is a 422. (The service's own idle consolidation does
+not call it; it rewrites the line itself, as [docs/operations.md](operations.md#consolidation)
+describes.) **Membership is not editable from here**, and
 that is the safeguard — a bad summarising pass can make the index read poorly, but it can
 never quietly move a fact into another subject.
 
-A title is flattened to one line and clamped to 80 characters, a summary to 200. Both are
-rendered into a structured block a model reads, where a newline would break the shape and a
+A title may be sent at up to 200 characters and a summary at up to 200; longer is a 422.
+The stored title is then flattened to one line and clamped to 80 characters, the summary to
+one line of 200. Both are rendered into a structured block a model reads, where a newline would break the shape and a
 title long enough to fill the budget would push out the topics underneath it.
 
 `profile` narrows the index to that profile's topics plus the account-wide ones. **With no `profile` you get the account-wide topics only** — a profile's subjects are its own, which is what keeps a work summary out of a personal one.
