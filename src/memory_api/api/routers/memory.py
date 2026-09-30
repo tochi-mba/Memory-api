@@ -343,7 +343,9 @@ async def confirm_memory(
         "Hides the memory from both views at once and schedules it for erasure. Reversible "
         "with `restore_memory` until the grace period runs out, which is the difference "
         "between a person changing their mind and a person losing something.\n\n"
-        "Forgetting is already applied returns the memory unchanged rather than failing."
+        "Forgetting something already forgotten returns it unchanged rather than failing, "
+        "and keeps the first moment it was forgotten, so a retry cannot extend the grace "
+        "period."
     ),
 )
 async def forget_memory(
