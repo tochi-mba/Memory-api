@@ -309,7 +309,7 @@ ones that got through a typo".
 | `session_id` | — | With `profile`, admits that session's memories. |
 | `limit` | `20` | 1–100. |
 | `order` | `asc` | `asc` \| `desc`, over write order. |
-| `after` / `before` | — | Cursors. See below. |
+| `after` / `before` | — | Cursors. Audit view only; see below. |
 | `include_forgotten` | `false` | Audit view only. |
 | `include_history` | `false` | Superseded versions. Audit view only. |
 | `include_inferred` | `true` | Set false to drop `trust: inferred`. Both views. |
@@ -340,9 +340,10 @@ the same as any other id that is not yours.
 empty page rather than invented. Walk forward by passing the previous `last_id` as `after`.
 
 **Cursors are for `list_memories`.** `search_memories` returns a ranked page, and a cursor
-filters by write order rather than by rank, so paging a search does not mean what it looks
-like it means. Ask for a larger `limit` instead; `has_more` still tells you honestly that
-the ranked set was longer than the page.
+filters by write order rather than by rank, so a search that carries `after` or `before` is
+refused with a 422 (`invalid-memory`) rather than answered with a page that means something
+other than it looks like. Ask for a larger `limit` instead; `has_more` still tells you
+honestly that the ranked set was longer than the page.
 
 ## Search
 
@@ -413,7 +414,7 @@ failing request and asserts it appears nowhere in the response.
 | 404 | `not-found` | No such memory, block or topic — **identical** to the answer for one belonging to another account. There is no 403 in this service: a 403 would confirm the id exists, which is the one fact that must not cross between accounts. |
 | 409 | `conflict` | A correction the store cannot apply: already superseded, forgotten, moved between scopes, or starting too early. |
 | 422 | `validation-failed` | The request body or query string broke a rule. Carries `errors`. |
-| 422 | `invalid-memory` | A search query with no words in it. |
+| 422 | `invalid-memory` | A search query with no words in it, or `after`/`before` on `search_memories`. |
 | 422 | `credential-refused` | Credential-shaped content. The message names keyring. |
 | 500 | `internal-server-error` | A bug. The detail is withheld deliberately — quote the `request_id`. |
 | 503 | `keyring-unreachable` | keyring's signing keys could not be fetched. Carries `Retry-After: 5`. Not your token. |
