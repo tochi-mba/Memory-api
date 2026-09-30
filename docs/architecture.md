@@ -170,7 +170,7 @@ added:
 | Component | Value |
 | --- | --- |
 | Relevance | `-bm25(memory_search)`, or 0 for a search with no `q` |
-| Recency | `exp(-(now - last_accessed_at) / 30 days)` |
+| Recency | `2^(-(now - last_accessed_at) / 30 days)`, computed as `exp(-ln 2 * Δt / HALF_LIFE_SECONDS)` |
 | Importance | `importance / 10` |
 
 Each is min-max normalised over the candidates in hand — so a component with no spread
@@ -183,8 +183,8 @@ yesterday's one-off note is new and matters once. Decaying from creation ranks t
 wrong way round and keeps doing it, evicting exactly the memories that have proved
 themselves. So retrieval stamps `last_accessed_at` and increments `access_count` on
 everything it returns: use is what keeps a memory near the top, and disuse is what lets it
-sink. (The decay constant is 30 days, applied as `exp(-Δt/τ)`: weight falls to 1/e after 30
-days and to a half after about 21.)
+sink. (`HALF_LIFE_SECONDS` is 30 days and is a true half-life: the weight is a half after
+30 days of disuse and a quarter after 60.)
 
 Two costs come with it. Retrieval is a write, so a read path takes the write lock briefly.
 And normalising needs the whole candidate set, so the query materialises every matching row
