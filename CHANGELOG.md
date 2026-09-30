@@ -69,6 +69,10 @@ All notable changes to memory-api are recorded here. The format follows
   it. The constant was being used as an e-folding time while being named a half-life.
 - The database file and its `-wal`/`-shm` sidecars are created `0600`. They were taking
   whatever the process umask gave them, which on many machines is world-readable.
+- `confirm_memory`'s description, which is what an MCP client shows a model, said it
+  promoted a memory from `untrusted` to `stated`. It has not done that since confirming
+  stopped rewriting provenance; the description now says it stamps `confirmed_at` and
+  leaves `trust` alone, on the internal route too.
 - **Breaking:** `domain.errors.MemoryError` is now `MemoryFault`. The old name shadowed the
   Python builtin, and an `except MemoryError` written anywhere in the process -- here, in a
   dependency, in a pasted script -- would have caught whichever of the two was in scope,

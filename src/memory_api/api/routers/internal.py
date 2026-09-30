@@ -175,8 +175,8 @@ async def correct_memory(
     summary="Confirm an untrusted memory so retrieval may use it",
     response_model=Memory,
     responses=_ADDRESSED,
-    description="Promotes untrusted to stated. Confirm only what the person confirmed. "
-    + FOR_A_SIBLING,
+    description="Stamps `confirmed_at` and leaves `trust` alone. Confirm only what the person "
+    "confirmed. " + FOR_A_SIBLING,
 )
 async def confirm_memory(
     memory_id: MemoryIdPath, caller: ServiceCallerDep, store: StoreDep

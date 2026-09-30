@@ -313,10 +313,11 @@ async def correct_memory(
     response_model=Memory,
     responses=_ADDRESSED,
     description=(
-        "Promotes a memory from `untrusted` to `stated` and records when. Until this "
-        "happens the memory is stored and listed but never retrieved, because its content "
-        "came from somebody other than this person and retrieval is what reaches a prompt.\n"
-        "\n"
+        "Records that the person vouched for this memory by stamping `confirmed_at`. "
+        "`trust` is left as it was, so the memory still says where it came from. Until an "
+        "`untrusted` memory is confirmed it is stored and listed but never retrieved, "
+        "because its content came from somebody other than this person and retrieval is "
+        "what reaches a prompt.\n\n"
         "Confirm only what the person themselves confirmed. Confirming on their behalf "
         "defeats the whole point of the trust level."
     ),
