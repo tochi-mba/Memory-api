@@ -149,7 +149,7 @@ Every failure is RFC 9457 `application/problem+json` with the same fields and a
 | 401 | The token was not accepted. | Stop. Do not retry; the person needs a new token. |
 | 404 | No such memory, block or topic **for this account**. | Stop. It is not there, and it is not somebody else's to reach. |
 | 409 | The correction cannot be applied: already superseded, forgotten, moved between scopes, or starting too early. | Re-read the memory and reconsider. Do not delete-then-add instead. |
-| 422 | A rule was broken: a field out of bounds, an unknown query parameter, a search with no words in it, or credential-shaped content. | Fix it. If it is a credential, it belongs in keyring — not re-encoded. |
+| 422 | A rule was broken: a field out of bounds, an unknown query parameter, a search with no words in it, a cursor on a search, or credential-shaped content. | Fix it. If it is a credential, it belongs in keyring — not re-encoded. |
 | 503 | keyring could not be reached, so the token could not be checked. | Retry after `Retry-After`. The token is probably fine. |
 
 ## What is already in place
