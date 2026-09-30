@@ -4,7 +4,7 @@
 coverage. Run it before you commit, and never pipe it to `head`.
 
 The family standard this service holds to — Makefile verbs, the CI caller, health routes,
-configuration rules, RFC 9457 errors, the no-pragma rule — lives in the meta-repo's
+configuration rules, the file-size limit, the no-pragma rule — lives in the meta-repo's
 [CONTRIBUTING.md](https://github.com/tochi-mba/LUCY-assistant/blob/main/CONTRIBUTING.md).
 `python scripts/parity.py` there scores this repository against it.
 

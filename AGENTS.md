@@ -17,13 +17,20 @@ that looks like one.
 | `make check` | Lint, types, import contracts, tests at 100% branch coverage. |
 | `make run` | Serve on :8009 with reload. |
 | `make test` | Tests only. |
+| `make fmt` | Format and apply safe lint fixes. |
+| `make docker` | Build `memory-api:local`. |
+
+Copy `.env.example` to `.env` before `make run`; the settings are explained in
+[docs/operations.md](docs/operations.md).
 
 ## Invariants
 
 - `/healthy` does no I/O and never fails.
 - `/ready` reports keyring JWKS **and** the database, and answers 503 when either is unusable.
-- Every `/v1` route takes identity only from a verified Bearer token. No route -- and no
-  request body -- can name an account. A memory belonging to somebody else answers 404.
+- Every `/v1` route takes identity only from a verified keyring token: the Bearer token on
+  the person-facing routes, `X-Keyring-User-Token` on `/v1/internal`, where the Bearer is a
+  sibling's service token. No route -- and no request body -- can name an account. A
+  memory belonging to somebody else answers 404.
 - `asserted_by` is derived from the verified caller. `source` is a claim the caller makes;
   `asserted_by` is a fact the service knows. They are never conflated.
 - The store is synchronous and runs only on `StoreWorker`'s single thread.
