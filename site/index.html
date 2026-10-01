@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Memory-api is where what an assistant learns about a person goes: remembered claims with provenance, corrected rather than overwritten, clustered into topics, and never retrieved untrusted. A REX Technologies product.">
+<meta name="robots" content="index,follow">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#080A09">
+<meta property="og:title" content="Memory-api — what an assistant learns, with where it came from — REX Technologies">
+<meta property="og:description" content="Memory-api is where what an assistant learns about a person goes: remembered claims with provenance, corrected rather than overwritten, clustered into topics, and never retrieved untrusted. A REX Technologies product.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://tochi-mba.github.io/Memory-api/">
+<meta name="twitter:card" content="summary">
+<link rel="canonical" href="https://tochi-mba.github.io/Memory-api/">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script>document.documentElement.classList.replace("no-js","js");</script>
+<noscript><style>@media(max-width:760px){.site-nav{display:flex!important;position:static!important;flex-direction:column}.menu-button{display:none!important}}</style></noscript>
+<title>Memory-api — what an assistant learns, with where it came from — REX Technologies</title>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="ambient ambient-one" aria-hidden="true"></div>
+<div class="ambient ambient-two" aria-hidden="true"></div>
+
+<header class="site-header">
+  <div class="container nav-wrap">
+    <a class="brand" href="#top" aria-label="Memory-api, by REX Technologies">
+      <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 6l10 5-10 5-10-5z"/><path d="M6 16l10 5 10-5M6 21l10 5 10-5"/></svg></span>
+      <span class="brand-lockup"><span class="brand-company">REX Technologies</span><span class="brand-name">Memory-api</span></span>
+    </a>
+    <button class="menu-button" type="button" aria-expanded="false" aria-controls="site-nav"><span class="sr-only">Toggle navigation</span><span></span><span></span></button>
+    <nav id="site-nav" class="site-nav" aria-label="Primary navigation">
+      <a href="#how">How it works</a>
+      <a href="#api">The API</a>
+      <a href="#install">Run it</a>
+      <a href="#limits">The lines it does not cross</a>
+      <a href="#docs">Docs</a>
+      <a class="nav-github" href="https://github.com/tochi-mba/Memory-api">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero container" id="top">
+    <div class="hero-copy">
+      <p class="eyebrow signal">Durable memory</p>
+      <h1>A fact told on Monday is still true on <span>Friday</span>.</h1>
+      <p class="hero-lede">An assistant that forgets everything the moment a conversation ends is a search box with better manners. This is where what it learns goes, so it can be corrected when it stops being true and shown to the person it is about.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="#install">Run it on your machine</a>
+        <a class="button button-secondary" href="https://github.com/tochi-mba/Memory-api">Source on GitHub</a>
+      </div>
+      <div class="hero-meta">
+        <span>Python 3.12+</span>
+        <span>Serves on :8009</span>
+        <span>Tokens from keyring</span>
+        <span>MIT licensed</span>
+      </div>
+    </div>
+    <pre class="console" aria-label="What a memory carries"><code><span class="k">kind</span>    episode | fact | procedure | summary
+<span class="k">scope</span>   account | profile | session
+<span class="k">trust</span>   stated | observed | inferred | <span class="s">untrusted</span>
+
+<span class="you"># "Actually, I moved in March"</span>
+a new memory is written; the old one is closed with
+valid_to and superseded_by_id, never deleted
+
+<span class="s">untrusted</span> is never retrieved until somebody confirms it</code></pre>
+  </section>
+
+  <section class="trust-strip">
+    <div class="container trust-grid">
+      <div><strong>Data, never an instruction</strong><span>Every memory comes back with its provenance attached.</span></div>
+      <div><strong>Untrusted stays out</strong><span>Anything distilled from a page or a tool result waits for confirmation.</span></div>
+      <div><strong>Corrected, not overwritten</strong><span>History is what makes “why do you think that?” answerable.</span></div>
+      <div><strong>No secrets</strong><span>Credential-shaped input is refused at write time, with no setting to turn that off.</span></div>
+    </div>
+  </section>
+
+  <section class="section container" id="how">
+    <div class="section-heading">
+      <p class="eyebrow signal">How it works</p>
+      <h2>Memory is not a list.</h2>
+      <p>It authenticates against <a href="https://tochi-mba.github.io/Keyring-api/">keyring</a>, and every query carries a mandatory account predicate taken from the verified token.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="step-number">01</span>
+        <h3>A remembered claim</h3>
+        <p>Who asserted it, where it came from, how confident the writer was, when it was true, and whether it has since been corrected.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">02</span>
+        <h3>Topics, and an index</h3>
+        <p>Memories cluster into named topics. What an assistant carries every turn is the topic index, and it expands one topic only when it needs it: forty lines instead of four hundred.</p>
+      </div>
+      <div class="step">
+        <span class="step-number">03</span>
+        <h3>Retrieval that ages honestly</h3>
+        <p>Ranking combines relevance, recency and importance, normalised before they are combined. Recency decays from last access, not creation, so a stable fact does not look old.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section container" id="api">
+    <div class="section-heading">
+      <p class="eyebrow signal">The API</p>
+      <h2>The operations, by what they are for.</h2>
+      <p>The reference, with every field and filter, is <a href="https://github.com/tochi-mba/Memory-api/blob/main/docs/api.md">docs/api.md</a>.</p>
+    </div>
+    <div class="feature-grid">
+      <div class="feature-card"><span class="meta">POST /v1/memory</span><h3>Write</h3><p>One memory, with its kind, scope, trust, source and validity. <code>POST /v1/memory/batch</code> reconciles several.</p></div>
+      <div class="feature-card"><span class="meta">GET /v1/memory/topics</span><h3>The topic index</h3><p>Titles, one-line summaries, counts and last-touched times. <code>GET /v1/memory/topics/{topic_id}</code> expands one.</p></div>
+      <div class="feature-card"><span class="meta">correct</span><h3>Corrections</h3><p>A correction supersedes; it never deletes and re-adds, which would throw away that the old claim used to be true.</p></div>
+      <div class="feature-card"><span class="meta">confirm</span><h3>Trust</h3><p>A person vouches for an untrusted memory, and only then may retrieval use it.</p></div>
+      <div class="feature-card"><span class="meta">forget · restore</span><h3>Forgetting</h3><p>Hidden at once, erased after a grace period by a sweeper, and restorable until then.</p></div>
+      <div class="feature-card"><span class="meta">PUT /v1/memory/blocks/{label}</span><h3>Pinned blocks</h3><p>The small blocks that travel with every turn.</p></div>
+    </div>
+  </section>
+
+  <section class="section container" id="install">
+    <div class="section-heading">
+      <p class="eyebrow signal">Run it</p>
+      <h2>Three commands, and a keyring to mint a token.</h2>
+      <p>You need Python 3.12 or newer and <a href="https://docs.astral.sh/uv/">uv</a>.</p>
+    </div>
+    <ol class="install-steps">
+      <li>Install.
+        <div class="command-row"><code>make install</code><button class="copy-button" type="button" data-copy="make install">Copy</button></div>
+      </li>
+      <li>Run the gate.
+        <div class="command-row"><code>make check</code><button class="copy-button" type="button" data-copy="make check">Copy</button></div>
+      </li>
+      <li>Serve it on :8009; the interactive docs are at <code>/docs</code>.
+        <div class="command-row"><code>make run</code><button class="copy-button" type="button" data-copy="make run">Copy</button></div>
+      </li>
+    </ol>
+    <p class="install-note">Every setting is in <a href="https://github.com/tochi-mba/Memory-api/blob/main/docs/operations.md">docs/operations.md</a>.</p>
+    <p id="copy-status" class="sr-only" aria-live="polite"></p>
+  </section>
+
+  <section class="section container" id="limits">
+    <div class="section-heading">
+      <p class="eyebrow signal">The lines it does not cross</p>
+      <h2>The lines this service does not cross.</h2>
+    </div>
+    <div class="faq">
+      <details open>
+        <summary>Can a memory tell the assistant what to do?</summary>
+        <p>No. Anything an assistant read on a page can end up in a memory, and a memory is permanent. Every memory is returned with its provenance, to be rendered as a reported claim. The API cannot enforce that; it makes the honest shape the easy one.</p>
+      </details>
+      <details>
+        <summary>Is anything retrieved before a person has vouched for it?</summary>
+        <p>Not if it is untrusted. A memory store is a prompt-injection persistence layer, so anything distilled from tool output or a page stays out of retrieval until it is confirmed. A topic made only of unconfirmed memories does not appear in the index either.</p>
+      </details>
+      <details>
+        <summary>What if someone asks it to remember an API key?</summary>
+        <p>The write is refused, with a message naming keyring, and the failure never echoes what was submitted.</p>
+      </details>
+      <details>
+        <summary>Can an operator read somebody&#x27;s memories?</summary>
+        <p>There is no admin API and no endpoint that reads memories on somebody's behalf. Isolation comes from storage, not from prompting.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="section container" id="docs">
+    <div class="section-heading">
+      <p class="eyebrow signal">Docs</p>
+      <h2>Written for the person who has to run it.</h2>
+    </div>
+    <div class="feature-grid">
+      <a class="feature-card link" href="https://github.com/tochi-mba/Memory-api/blob/main/docs/api.md"><h3>The HTTP contract</h3><p>Every operation, field and filter.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/Memory-api/blob/main/docs/architecture.md"><h3>Architecture</h3><p>Topics, clustering, and the two views of the same rows.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/Memory-api/blob/main/docs/operations.md"><h3>Operations</h3><p>Every setting, the sweeper and the grace period.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/Memory-api/blob/main/docs/mcp.md"><h3>Assistant tools</h3><p>How a memory is rendered to a model.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/Memory-api/blob/main/docs/testing.md"><h3>Testing</h3><p>What is tested against real storage, and why.</p></a>
+      <a class="feature-card link" href="https://github.com/tochi-mba/Memory-api/blob/main/CHANGELOG.md"><h3>Changelog</h3><p>What changed, and why it was wrong before.</p></a>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="container footer-wrap">
+    <span>© <span id="year">2026</span> REX Technologies · Memory-api</span>
+    <span>Part of the <a href="https://tochi-mba.github.io/LUCY-assistant/">LUCY family</a>. MIT licensed.</span>
+    <span class="footer-links">
+      <a href="https://github.com/tochi-mba/Memory-api/blob/main/CHANGELOG.md">What's new <span aria-hidden="true">↗</span></a>
+      <a href="#top">Back to top <span aria-hidden="true">↑</span></a>
+    </span>
+  </div>
+</footer>
+<script src="app.js" defer></script>
+</body>
+</html>

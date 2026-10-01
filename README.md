@@ -1,5 +1,7 @@
 # memory-api
 
+A REX Technologies product. Site: <https://tochi-mba.github.io/Memory-api/>
+
 An assistant that forgets everything the moment a conversation ends is a search box with
 better manners. This is where what it learns about a person goes, so that a fact told on
 Monday is still true on Friday, can be corrected when it stops being true, and can be

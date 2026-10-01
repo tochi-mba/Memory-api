@@ -8,6 +8,12 @@ All notable changes to memory-api are recorded here. The format follows
 
 ### Added
 
+- A GitHub Pages site at <https://tochi-mba.github.io/Memory-api/>, in the REX ink/signal style: what Memory-api is,
+  its API, how to run it and what it will not do. `site/` is plain static HTML;
+  `.github/workflows/pages.yml` publishes it after `scripts/check_site.py` has checked every
+  page for a broken anchor, a missing asset, an image without alt text or draft text.
+- The repository is attributed to REX Technologies: the LICENSE copyright holder, the package
+  author and the README.
 - **Memories.** Write, read, search, correct, confirm, forget, restore and erase, plus
   batch reconciliation so a caller can decide add, update, delete or no-op per candidate
   rather than blindly appending. Cursor pagination on the listing view. Every
