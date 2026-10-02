@@ -10,9 +10,11 @@ operating manual for working inside it.
 src/memory_api/
   api/      routers, dependencies, wire schemas, problem+json errors, middleware
   auth/     token verification: a thin adapter over the family's keyring_client
-  core/     configuration, the composition root, the request-id context, and the two
-            background passes (the sweeper and the consolidator)
-  domain/   the models, the topic rules, the secret refusal, the error vocabulary
+  core/     configuration, the composition root, the request-id context, a person's
+            settings from settings-api, and the two background passes (the sweeper and
+            the consolidator)
+  domain/   the models, the topic rules, the secret refusal, the importance floor, the
+            error vocabulary
   store/    the schema and every query, behind one worker thread
 ```
 
@@ -28,17 +30,31 @@ public and its person-facing operation ids are MCP tool names, so it has to be a
 a field without the storage layer having an opinion about it. The `/v1/internal` ids are
 prefixed `internal_` so they never become those names.
 
-### The one import contract
+### The import contracts
 
-`lint-imports` enforces exactly one rule, inside `make check`: **routers may not import
+`lint-imports` enforces two rules, inside `make check`. The first: **routers may not import
 `keyring_client`, `httpx` or `jwt`.** Indirect imports are allowed, so a router still
-reaches the verifier through a dependency.
+reaches the verifier through a dependency. The second: **only `core/preferences.py` imports
+`settings_client`**, the one module that knows how a person's settings degrade during an
+outage, so no call site can read a setting and get that wrong.
 
-It is the one rule whose violation would be invisible. This service's entire relationship
+The first is the rule whose violation would be invisible. This service's entire relationship
 with keyring is "verify this signed token against those published keys" — no call to
 keyring at request time, ever — and the way that ends is somebody needing a fact keyring
 holds, adding one `httpx` call in a handler, and it being reviewed and merged. The rest of
 the layering is held up by there being five packages you can read in an afternoon.
+
+## A person's settings
+
+With settings-api configured, a write that adds a memory reads its owner's
+`memory.write_importance_floor`, through `PreferencesDep` (or `ServicePreferencesDep` on
+`/v1/internal`). Both depend on the verified caller first, so settings-api is never shown a
+token this service refused. The floor is read lazily: `Preferences.importance_floor()` is
+called only by a write that needs it, so a batch of corrections or a read is never failed
+because settings-api is down. `domain/importance.py` holds what the floor applies to — a
+create and a batch `ADD`, never a correction. `memory.consolidation` is not read: the
+consolidator is a background pass with no person's token to present, and there is no
+session-end signal for its default to mean anything.
 
 ## A request, end to end
 

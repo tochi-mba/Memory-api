@@ -29,8 +29,15 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Response, status
 
-from memory_api.api.dependencies import CurrentCallerDep, SelectionDep, StoreDep, asserted_by
+from memory_api.api.dependencies import (
+    CurrentCallerDep,
+    PreferencesDep,
+    SelectionDep,
+    StoreDep,
+    asserted_by,
+)
 from memory_api.api.schemas import BatchResult, BlockList, ForgetAllResult, Problem
+from memory_api.domain.importance import refuse_additions_below_floor, refuse_below_floor
 from memory_api.domain.models import Batch, Block, BlockInput, Memory, MemoryInput, Page
 
 router = APIRouter(prefix="/v1/memory", tags=["memory"])
@@ -59,6 +66,12 @@ LabelPath = Annotated[
     Path(description="Which block, e.g. `persona`, `human`.", min_length=1, max_length=64),
 ]
 
+FLOOR = (
+    "A new memory less important than the floor this person chose is refused with a 422 "
+    "`below-importance-floor` and not stored. When their settings cannot be read the floor "
+    "is not guessed: the write is a 503 `preferences-unavailable`, and can be tried again."
+)
+
 NOT_YOURS = (
     "A memory belonging to another account answers 404, the same as one that never "
     "existed. Nothing here can name an account: whose memories these are comes from the "
@@ -75,7 +88,7 @@ NOT_YOURS = (
     operation_id="create_memory",
     summary="Remember something",
     response_model=Memory,
-    responses=_VALIDATED,
+    responses={**_VALIDATED, status.HTTP_503_SERVICE_UNAVAILABLE: _PROBLEM},
     description=(
         "Records one memory for the person whose token this is.\n\n"
         "`source` is your claim about where this came from; `asserted_by` is filled in from "
@@ -84,11 +97,14 @@ NOT_YOURS = (
         "out of retrieval until somebody confirms it.\n\n"
         "Writing the same thing twice returns the memory that already exists rather than a "
         "duplicate. Credential-shaped content is refused: put secrets in keyring and "
-        "remember a description of them here instead."
+        "remember a description of them here instead.\n\n" + FLOOR
     ),
 )
-async def create_memory(request: MemoryInput, caller: CurrentCallerDep, store: StoreDep) -> Memory:
-    """Write one memory for the verified caller."""
+async def create_memory(
+    request: MemoryInput, caller: CurrentCallerDep, preferences: PreferencesDep, store: StoreDep
+) -> Memory:
+    """Write one memory for the verified caller, if it clears their importance floor."""
+    refuse_below_floor(request, preferences.importance_floor())
     account, author = caller.account_id, asserted_by(caller)
     return await store.call(lambda handle: handle.write(account, author, request))
 
@@ -226,7 +242,11 @@ async def delete_memory_block(
     operation_id="reconcile_memories",
     summary="Apply a reconciled set of decisions in one transaction",
     response_model=BatchResult,
-    responses={**_ADDRESSED, status.HTTP_409_CONFLICT: _PROBLEM},
+    responses={
+        **_ADDRESSED,
+        status.HTTP_409_CONFLICT: _PROBLEM,
+        status.HTTP_503_SERVICE_UNAVAILABLE: _PROBLEM,
+    },
     description=(
         "Takes the output of an extraction pass -- ADD, UPDATE, DELETE, NOOP -- and applies "
         "it atomically. Either every decision lands or none does, so a failure halfway "
@@ -234,13 +254,17 @@ async def delete_memory_block(
         "retired.\n\n"
         "Send NOOP for what you decided to leave alone. It costs one row read and makes the "
         "result a complete account of what the pass considered, rather than only of what it "
-        "changed. `data[i]` is the memory decision `i` produced, in order."
+        "changed. `data[i]` is the memory decision `i` produced, in order.\n\n"
+        "Each ADD is held to the importance floor this person chose, and one below it "
+        "refuses the whole batch with a 422 naming which decisions were the reason. An UPDATE "
+        "is a correction and is not held to it. A batch with no ADD never reads the floor."
     ),
 )
 async def reconcile_memories(
-    request: Batch, caller: CurrentCallerDep, store: StoreDep
+    request: Batch, caller: CurrentCallerDep, preferences: PreferencesDep, store: StoreDep
 ) -> BatchResult:
-    """Apply every decision in one transaction."""
+    """Apply every decision in one transaction, if every addition clears the floor."""
+    refuse_additions_below_floor(request.decisions, preferences.importance_floor)
     account, author = caller.account_id, asserted_by(caller)
     applied = await store.call(lambda handle: handle.batch(account, author, request.decisions))
     return BatchResult(data=applied)
@@ -298,7 +322,9 @@ async def get_memory(memory_id: MemoryIdPath, caller: CurrentCallerDep, store: S
         "`valid_from` says when the new version started being true, and defaults to now. "
         "The correction inherits the topic of what it replaces, so a fact never gets "
         "separated from its own history. A correction must keep the original's scope, and "
-        "cannot start before the memory it replaces."
+        "cannot start before the memory it replaces.\n\n"
+        "A correction is not held to the importance floor this person chose: it replaces "
+        "something already remembered, and refusing it would leave what it corrects standing."
     ),
 )
 async def correct_memory(

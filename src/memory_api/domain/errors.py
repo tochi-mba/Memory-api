@@ -50,3 +50,26 @@ class SecretError(MemoryFault):
     """Credential-shaped material was offered as memory, and refused."""
 
     code = "credential-refused"
+
+
+class BelowImportanceFloorError(MemoryFault):
+    """A new memory is less important than this person chose to have remembered.
+
+    A refusal rather than a quiet 201: the caller must not believe something was stored
+    that was not. The message never names the floor or the importance sent, only that one
+    was below the other.
+    """
+
+    code = "below-importance-floor"
+
+
+class PreferencesUnavailableError(MemoryFault):
+    """A person's settings were needed and could not be read honestly.
+
+    Either settings-api refused this service -- a grant it was not given, a token it does
+    not recognise -- or it cannot be reached and the setting in question is one that must
+    not be guessed at. Neither is the caller's doing, so it is not a 4xx.
+    """
+
+    status = 503
+    code = "preferences-unavailable"

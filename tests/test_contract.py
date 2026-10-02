@@ -103,7 +103,7 @@ class TestEveryOperation:
         self, schema: dict[str, Any]
     ) -> None:
         expected_failures = {
-            "create_memory": {"401", "422"},
+            "create_memory": {"401", "422", "503"},
             "list_memories": {"401", "404", "422"},
             "search_memories": {"401", "422"},
             "get_memory": {"401", "404", "422"},
@@ -115,12 +115,12 @@ class TestEveryOperation:
             "get_memory_block": {"401", "404", "422"},
             "write_memory_block": {"401", "422"},
             "delete_memory_block": {"401", "422"},
-            "reconcile_memories": {"401", "404", "409", "422"},
+            "reconcile_memories": {"401", "404", "409", "422", "503"},
             "forget_all_memories": {"401"},
             "list_memory_topics": {"401", "422"},
             "get_memory_topic": {"401", "404", "422"},
             "update_memory_topic": {"401", "404", "422"},
-            "internal_create_memory": {"401", "422"},
+            "internal_create_memory": {"401", "422", "503"},
             # A cursor naming a memory that is not yours answers 404, as on `list_memories`.
             "internal_list_memories": {"401", "404", "422"},
             "internal_list_memory_blocks": {"401", "422"},

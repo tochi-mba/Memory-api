@@ -11,8 +11,8 @@ dependency.
 | Python | 3.12 or newer. 3.12 is the floor and what CI gates. |
 | Disk | one SQLite file plus its `-wal` and `-shm` sidecars |
 | Network, inbound | one port — **8009** in the family allocation — behind a TLS-terminating proxy |
-| Network, outbound | keyring's JWKS URL, and nothing else |
-| Secrets | none of its own; optional `MEMORY_SERVICE_TOKENS` admits siblings to `/v1/internal` |
+| Network, outbound | keyring's JWKS URL, and settings-api when `MEMORY_SETTINGS_API_BASE_URL` is set |
+| Secrets | none of its own; optional `MEMORY_SERVICE_TOKENS` admits siblings to `/v1/internal`, and `MEMORY_SETTINGS_API_TOKEN` when settings-api is on |
 
 That last row used to be simpler. memory-api still holds no signing key and no
 third-party credential, and it still refuses to store anything that looks like one. The
@@ -183,6 +183,47 @@ This service verifies keyring's tokens locally and never calls keyring at reques
 | `MEMORY_CONSOLIDATE_IDLE_SECONDS` | `2592000` (30 days) | How long a memory must go unused (last access, not creation) before the idle-merge pass may fold it into a topic summary. Must be above zero. |
 | `MEMORY_CONSOLIDATE_INTERVAL_SECONDS` | `3600` | How often that pass runs. `0` (or less) turns it off. |
 
+### settings-api
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `MEMORY_SETTINGS_API_BASE_URL` | unset | Where settings-api is. Empty means off. |
+| `MEMORY_SETTINGS_API_TOKEN` | unset | This service's entry in settings-api's `SETTINGS_API_SERVICES`: at least 32 characters, never echoed on failure. Set both or neither; half a pair is a startup error. |
+
+Off by default, and off means everything is kept exactly as before. When on,
+`create_memory`, `internal_create_memory` and `reconcile_memories` ask settings-api for
+their caller's `memory` namespace, presenting the same user token keyring minted, and only
+after this service has verified it. Nothing else asks. The grant there
+needs `audience_prefix` equal to `MEMORY_AUDIENCE` (`memory-api` unless you changed it).
+
+**`memory.write_importance_floor`** is applied. A new memory whose `importance` is below
+the person's floor is a 422 `below-importance-floor` and is not stored; in a batch, one
+`ADD` below it refuses the whole batch and names the decisions that were the reason. A
+correction (`correct_memory`, or a batch `UPDATE`) is not held to it: it replaces something
+already remembered, and refusing it would leave what it corrects standing. A write that
+names no importance carries 5. The catalogue says this setting **refuses** rather than
+falls back, so when the floor cannot be known — settings-api has never answered, is down
+with nothing cached for that person, or answered with a value that is not a floor — the
+write is a 503 `preferences-unavailable` and nothing is stored. Reads, forgets, corrections
+and a batch that adds nothing never need the floor, and carry on through an outage. A settings-api that has no such key
+cannot have been told a floor, and everything is kept. If settings-api refuses this service
+(401/403), the request is a 503 with a fixed body that names neither the grant nor the URL.
+
+settings-api answers a person who never chose with the catalogue's default, and this
+service cannot tell that apart from a choice. Keeping everything for them needs that
+default to be `1`; a settings-api whose catalogue still says `3` holds everybody who never
+chose to a floor of three. settings-api's `GET /v1/settings/schema` shows which it has.
+
+**`memory.consolidation`** is in the catalogue and does nothing here. The idle-merge pass
+runs in the background on `MEMORY_CONSOLIDATE_*`, for every account, and has no person's
+token to show settings-api, so it cannot read anybody's choice when it runs. And memory-api
+has no session-end signal, so `on_session_end` has nothing to mean. Honouring it needs the
+caller that knows a session ended to say so; until then, setting it stores a value and
+changes nothing. `memory.retrieval_limit` and `memory.retrieval_trust_floor` are applied by
+the LUCY hub, which makes the recall, and are not read here either.
+
+Nothing is fetched at startup.
+
 ### Deliberate absences
 
 There is no setting that disables token verification, none that lets one account read
@@ -347,9 +388,10 @@ operator can see it before the grace runs out.
 
 Logging is the standard library's, at `MEMORY_LOG_LEVEL`, with uvicorn's access log; the
 `memory-api` entry point sends this service's own records to uvicorn's handler. It writes
-five records of its own, each carrying an **exception type name** or a **count**, never an
-exception's arguments — a `ValueError` raised deep in a write path routinely carries the
-value, and here the value is a sentence somebody wrote about their own life:
+these records of its own, each carrying an **exception type name**, a **count**, a status
+code or a setting's *name*, never an exception's arguments or a setting's value — a
+`ValueError` raised deep in a write path routinely carries the value, and here the value is
+a sentence somebody wrote about their own life:
 
 | Record | Level | When |
 | --- | --- | --- |
@@ -358,6 +400,12 @@ value, and here the value is a sentence somebody wrote about their own life:
 | `sweep_failed error_type=…` | WARNING | A sweep pass failed; the next one still runs. |
 | `consolidation_completed summaries=N` | INFO | A consolidation pass finished. |
 | `consolidation_failed error_type=…` | WARNING | A consolidation pass failed; the next one still runs. |
+| `per_person_settings_off` / `per_person_settings_on namespace=memory` | INFO | At startup: whether settings-api is in use. |
+| `settings_unavailable namespace=memory` | WARNING | settings-api has never answered this process; a write that adds a memory is a 503. |
+| `settings_stale namespace=memory` | INFO | settings-api is down and a person's cached settings were used. |
+| `settings_refused namespace=memory key=write_importance_floor` | WARNING | settings-api is down and the floor must not be guessed; the write is a 503. |
+| `settings_rejected namespace=memory status_code=N` | WARNING | settings-api refused this service. Check the grant. |
+| `setting_unusable namespace=memory key=write_importance_floor` | WARNING | settings-api answered with something that is not a floor; the write is a 503. |
 
 Nothing else is logged, which is why there is no redaction processor to configure: there is
 no path by which a memory's text reaches a log line.
@@ -373,5 +421,7 @@ no path by which a memory's text reaches a log line.
 | Startup error about the audience | `MEMORY_AUDIENCE` is empty, padded with whitespace, or contains a dot | Give it a plain name. |
 | `unable to open database file` | The directory is not writable by the service user | The parent directory is created at startup; it still has to be creatable. Check ownership of the volume. |
 | `/ready` reports the database degraded | The file was moved, deleted, or its permissions changed under a live connection | The `reason` is the exception type. Restart after fixing the path. |
+| A write refused with `below-importance-floor` | The memory's `importance` is below the floor its owner chose in settings-api | Working as intended. Send it with a higher importance only if it really matters more; the person can lower their floor. |
+| Writes 503 `preferences-unavailable` while reads work | settings-api is unreachable and the importance floor is never guessed, or it refused this service | `settings_rejected` in the log means a grant: give memory-api the `memory` namespace with `audience_prefix` equal to `MEMORY_AUDIENCE`. Otherwise bring settings-api back, or unset `MEMORY_SETTINGS_API_BASE_URL` to keep everything for everyone. |
 | A legitimate memory refused with `credential-refused` | It contains a long high-entropy run, or a credential-looking prefix | There is no override, by design. Store a description of the thing instead, and put the thing in keyring. |
 | A search returns nothing for a word that is plainly in a memory | The memory is untrusted and unconfirmed, expired, superseded, forgotten, not yet valid, in another profile, or an `episode` outside its session | Check with `list_memories?include_forgotten=true&include_history=true`, which hides none of those. |

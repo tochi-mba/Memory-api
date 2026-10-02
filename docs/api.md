@@ -176,6 +176,15 @@ a correction, the version it replaced has its `valid_to` moved with it so the tw
 and a start before that version's is a 409, as on a correction. An `expires_at` that would
 not follow the resulting `valid_from` is a 422 and changes nothing.
 
+**A memory below its owner's importance floor is refused.** With settings-api configured,
+a person may choose `memory.write_importance_floor`: how important something has to be
+before it is worth remembering. A new memory whose `importance` (5 when left out) is below
+it is a 422 `below-importance-floor` and nothing is stored — never a quiet 201. When the
+floor cannot be read, the write is a 503 `preferences-unavailable` rather than a guess, and
+can be tried again. A correction is not held to the floor. Without settings-api there is no
+floor and every write is kept, as it always was. See
+[docs/operations.md](operations.md#settings-api).
+
 **Credential-shaped content is refused** with a 422 that names keyring and never echoes
 what was sent. This applies to the whole request, structured `value` included, and to
 blocks and topic rewrites. There is no setting that disables it.
@@ -262,6 +271,12 @@ POST /v1/memory/batch
 One to a hundred decisions. `ADD` and `UPDATE` require a `memory`; `UPDATE`, `DELETE` and
 `NOOP` require a `memory_id`; anything else is a 422. `UPDATE` is a correction, `DELETE` is
 a forget.
+
+Each `ADD` is held to its owner's importance floor. One below it refuses the **whole**
+batch with a 422 `below-importance-floor` whose detail names the positions of the decisions
+that were the reason, never their content: leave those out and send the rest again. An
+`UPDATE` is a correction and is not held to it, and a batch with no `ADD` is never failed
+because the floor cannot be read.
 
 `data[i]` is the memory decision `i` produced, in order — which is the only way a caller
 can tell which of its NOOPs was actually a NOOP. Send NOOP for what you decided to leave
@@ -446,8 +461,10 @@ failing request and asserts it appears nowhere in the response.
 | 422 | `validation-failed` | The request body or query string broke a rule, including a number that is not finite. Carries `errors`. |
 | 422 | `invalid-memory` | A search query with no words in it, `after`/`before` on `search_memories`, or an `expires_at` that does not follow the memory's `valid_from` once the store has filled it in (`expires_at must follow valid_from`). |
 | 422 | `credential-refused` | Credential-shaped content. The message names keyring. |
+| 422 | `below-importance-floor` | A new memory, or a batch `ADD`, is less important than the floor its owner chose in settings-api. Nothing was stored. |
 | 500 | `internal-server-error` | A bug. The detail is withheld deliberately — quote the `request_id`. |
 | 503 | `keyring-unreachable` | keyring's signing keys could not be fetched. Carries `Retry-After: 5`. Not your token. |
+| 503 | `preferences-unavailable` | A write that adds a memory needed its owner's importance floor and settings-api could not say, or refused this service. Nothing was stored; try again. |
 
 Every response — success or failure — carries `X-Request-ID`. Send your own and it is
 honoured, capped at 64 characters, so one trace can span services; send none and one is

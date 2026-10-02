@@ -21,23 +21,27 @@ if TYPE_CHECKING:
 
     from httpx import AsyncBaseTransport
 
+    from memory_api.core.preferences import PreferenceSource
+
 
 def create_app(
     settings: Settings | None = None,
     *,
     transport: AsyncBaseTransport | None = None,
+    preferences: PreferenceSource | None = None,
 ) -> FastAPI:
     """Build the application.
 
     Args:
         settings: configuration; loaded from the environment when omitted.
         transport: optional httpx transport for tests (fake keyring).
+        preferences: optional source of people's settings for tests (fake settings-api).
     """
     resolved = settings if settings is not None else load_settings()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-        container = build_container(resolved, transport=transport)
+        container = build_container(resolved, transport=transport, preferences=preferences)
         app.state.container = container
         # Erasure is a background job, not a request. See `core.sweeper` for why running it
         # at all is the difference between the route descriptions being true and not.

@@ -8,6 +8,19 @@ All notable changes to memory-api are recorded here. The format follows
 
 ### Added
 
+- **A person's importance floor.** With `MEMORY_SETTINGS_API_BASE_URL` and
+  `MEMORY_SETTINGS_API_TOKEN` set, a new memory -- `create_memory`,
+  `internal_create_memory`, or an `ADD` in `reconcile_memories` -- is held to the
+  `memory.write_importance_floor` its owner chose in settings-api. Below it is a 422
+  `below-importance-floor` and nothing is stored; one `ADD` below it refuses the whole
+  batch and names the decisions that were the reason. A correction is not held to it. The
+  floor is never guessed: when settings-api cannot say, a write that adds a memory is a 503
+  `preferences-unavailable`, while reads, forgets, corrections and a batch that adds nothing
+  carry on. Unset, every write is kept exactly as before; set, a person who never chose gets
+  the catalogue's default, which has to be 1 for nothing to change for them.
+  `memory.consolidation` is not read:
+  the idle-merge pass has no person's token to ask with, and there is no session-end signal.
+
 - A GitHub Pages site at <https://tochi-mba.github.io/Memory-api/>, in the REX ink/signal style: what Memory-api is,
   its API, how to run it and what it will not do. `site/` is plain static HTML;
   `.github/workflows/pages.yml` publishes it after `scripts/check_site.py` has checked every

@@ -111,6 +111,15 @@ async def test_a_service_token_without_a_person_is_refused(internal: AsyncClient
     assert response.status_code == 401
 
 
+async def test_a_person_without_a_service_is_refused(internal: AsyncClient) -> None:
+    """The bug, named: the person's token is now read before the service's, and a request
+    carrying only the person's must still be refused for lacking the other."""
+    person = mint(account_id=ACCOUNT, audience=AUDIENCE, issuer=ISSUER)
+    response = await internal.get("/v1/internal/memory/search", headers={USER_TOKEN_HEADER: person})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "token refused"
+
+
 async def test_a_blank_person_token_is_refused(internal: AsyncClient) -> None:
     response = await internal.get(
         "/v1/internal/memory/search",

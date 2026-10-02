@@ -19,6 +19,7 @@ dependencies = [
     "keyring-client",
     "pydantic>=2.9",
     "pydantic-settings>=2.5",
+    "settings-client",
     "uvicorn[standard]>=0.30",
 ]
 
@@ -131,5 +132,27 @@ source_modules = ["memory_api.api.routers"]
 forbidden_modules = ["keyring_client", "httpx", "jwt"]
 allow_indirect_imports = true
 
+# settings-client owns caching, revalidation, single-flight and outage behaviour. Reading it
+# from anywhere else would re-implement those four, slightly wrong, and would show a user
+# token to settings-api without the one module that knows how to degrade. The container
+# builds the source through build_preference_source, so only direct imports are refused.
+[[tool.importlinter.contracts]]
+name = "Talking to settings-api stays behind the preferences module"
+type = "forbidden"
+source_modules = [
+    "memory_api.api",
+    "memory_api.auth",
+    "memory_api.domain",
+    "memory_api.store",
+    "memory_api.core.config",
+    "memory_api.core.consolidator",
+    "memory_api.core.container",
+    "memory_api.core.context",
+    "memory_api.core.sweeper",
+]
+forbidden_modules = ["settings_client"]
+allow_indirect_imports = true
+
 [tool.uv.sources]
 keyring-client = { git = "https://github.com/tochi-mba/Keyring-api", subdirectory = "clients/python", tag = "keyring-client-v0.1.0" }
+settings-client = { git = "https://github.com/tochi-mba/Settings-api", subdirectory = "clients/python", tag = "settings-client-v0.3.0" }

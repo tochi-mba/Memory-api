@@ -12,8 +12,15 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Path, Query, status
 
-from memory_api.api.dependencies import SelectionDep, ServiceCallerDep, StoreDep, asserted_by
+from memory_api.api.dependencies import (
+    SelectionDep,
+    ServiceCallerDep,
+    ServicePreferencesDep,
+    StoreDep,
+    asserted_by,
+)
 from memory_api.api.schemas import BlockList, Problem
+from memory_api.domain.importance import refuse_below_floor
 from memory_api.domain.models import Memory, MemoryInput, Page, TopicDetail, TopicPage
 
 router = APIRouter(prefix="/v1/internal/memory", tags=["internal"])
@@ -53,10 +60,20 @@ FOR_A_SIBLING = (
     operation_id="internal_create_memory",
     summary="Remember something on a person's behalf",
     response_model=Memory,
-    responses=_VALIDATED,
-    description="Records one memory for the person named by the user token. " + FOR_A_SIBLING,
+    responses={**_VALIDATED, status.HTTP_503_SERVICE_UNAVAILABLE: _PROBLEM},
+    description=(
+        "Records one memory for the person named by the user token, if it is at least as "
+        "important as the floor that person chose: below it is a 422 `below-importance-floor`, "
+        "and a floor that cannot be read is a 503 rather than a guess. " + FOR_A_SIBLING
+    ),
 )
-async def create_memory(request: MemoryInput, caller: ServiceCallerDep, store: StoreDep) -> Memory:
+async def create_memory(
+    request: MemoryInput,
+    caller: ServiceCallerDep,
+    preferences: ServicePreferencesDep,
+    store: StoreDep,
+) -> Memory:
+    refuse_below_floor(request, preferences.importance_floor())
     account, author = caller.account_id, asserted_by(caller)
     return await store.call(lambda handle: handle.write(account, author, request))
 

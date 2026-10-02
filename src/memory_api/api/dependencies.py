@@ -11,6 +11,10 @@ person's id.
 :class:`~memory_api.domain.models.Selection` the store already takes. Writing the twelve
 query parameters out by hand would work exactly once: the first time somebody adds a field
 to ``Selection``, the HTTP surface would silently stop offering it.
+
+**settings-api is only ever shown a token this service has verified.** ``PreferencesDep``
+and ``ServicePreferencesDep`` depend on the caller first, so a forged or expired token is a
+401 here and never becomes a request to settings-api on somebody's behalf.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from memory_api.auth.services import ServiceCaller
 from memory_api.auth.verifier import TOKEN_REFUSED, AuthenticationError, VerifiedCaller
 from memory_api.core.container import Container
+from memory_api.core.preferences import Preferences
 from memory_api.domain.models import Selection
 from memory_api.store.worker import StoreWorker
 
@@ -47,22 +52,41 @@ def get_store(container: ContainerDep) -> StoreWorker:
 StoreDep = Annotated[StoreWorker, Depends(get_store)]
 
 
-async def get_current_caller(
-    container: ContainerDep,
+def get_bearer_token(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
-) -> VerifiedCaller:
+) -> str:
+    """The person's token on the person-facing surface, not yet verified."""
     if credentials is None:
         raise AuthenticationError(MISSING_CREDENTIALS)
-    return await container.verifier.verify(credentials.credentials)
+    return credentials.credentials
+
+
+BearerTokenDep = Annotated[str, Depends(get_bearer_token)]
+
+
+async def get_current_caller(container: ContainerDep, token: BearerTokenDep) -> VerifiedCaller:
+    return await container.verifier.verify(token)
 
 
 CurrentCallerDep = Annotated[VerifiedCaller, Depends(get_current_caller)]
 
 
+def get_user_token(
+    user_token: Annotated[str | None, Header(alias=USER_TOKEN_HEADER)] = None,
+) -> str:
+    """The person's token on the internal surface, not yet verified."""
+    if user_token is None or not user_token.strip():
+        raise AuthenticationError(TOKEN_REFUSED)
+    return user_token
+
+
+UserTokenDep = Annotated[str, Depends(get_user_token)]
+
+
 async def get_service_caller(
     container: ContainerDep,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
-    user_token: Annotated[str | None, Header(alias=USER_TOKEN_HEADER)] = None,
+    user_token: UserTokenDep,
 ) -> ServiceCaller:
     """A registered service acting for the person named by the second credential.
 
@@ -73,13 +97,33 @@ async def get_service_caller(
     if credentials is None:
         raise AuthenticationError(TOKEN_REFUSED)
     service = container.services.identify(credentials.credentials)
-    if user_token is None or not user_token.strip():
-        raise AuthenticationError(TOKEN_REFUSED)
     person = await container.verifier.verify(user_token)
     return ServiceCaller(account_id=person.account_id, audience=person.audience, service=service)
 
 
 ServiceCallerDep = Annotated[ServiceCaller, Depends(get_service_caller)]
+
+
+async def get_preferences(
+    container: ContainerDep, caller: CurrentCallerDep, token: BearerTokenDep
+) -> Preferences:
+    """The verified caller's own settings, read with the token they presented."""
+    del caller  # Depended on so the token is verified before settings-api sees it.
+    return await container.preferences.for_token(token)
+
+
+PreferencesDep = Annotated[Preferences, Depends(get_preferences)]
+
+
+async def get_service_preferences(
+    container: ContainerDep, caller: ServiceCallerDep, user_token: UserTokenDep
+) -> Preferences:
+    """The settings of the person a sibling is acting for, read with that person's token."""
+    del caller  # Depended on so both credentials are checked before settings-api is asked.
+    return await container.preferences.for_token(user_token)
+
+
+ServicePreferencesDep = Annotated[Preferences, Depends(get_service_preferences)]
 
 SelectionDep = Annotated[Selection, Query()]
 """Every list and search filter, as query parameters, from the model the store reads.
