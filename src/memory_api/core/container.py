@@ -10,12 +10,14 @@ from keyring_client import JwksClient, SystemClock
 
 from memory_api.auth.services import ServiceAuthenticator
 from memory_api.auth.verifier import TokenVerifier
+from memory_api.core.preferences import build_preference_source
 from memory_api.store.worker import StoreWorker
 
 if TYPE_CHECKING:
     import httpx
 
     from memory_api.core.config import Settings
+    from memory_api.core.preferences import PreferenceSource
 
 
 @dataclass(slots=True)
@@ -27,6 +29,7 @@ class Container:
     verifier: TokenVerifier
     services: ServiceAuthenticator
     store: StoreWorker
+    preferences: PreferenceSource
     started_at: float = field(default_factory=time.monotonic)
 
     @property
@@ -34,25 +37,37 @@ class Container:
         return time.monotonic() - self.started_at
 
     async def aclose(self) -> None:
-        """Release both long-lived resources, even if the first one objects.
+        """Release every long-lived resource, even if an earlier one objects.
 
-        The store's thread is shut down whatever the JWKS client does on the way out. A
+        The store's thread is shut down whatever the HTTP clients do on the way out. A
         leaked thread holds an open SQLite connection, and on a file-backed database that
         means a WAL that is never checkpointed.
         """
         try:
-            await self.jwks.aclose()
+            try:
+                await self.jwks.aclose()
+            finally:
+                await self.preferences.aclose()
         finally:
             await self.store.aclose()
 
 
 def build_container(
-    settings: Settings, *, transport: httpx.AsyncBaseTransport | None = None
+    settings: Settings,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+    preferences: PreferenceSource | None = None,
 ) -> Container:
-    """Assemble JWKS client, verifier and store worker. No network I/O yet.
+    """Assemble JWKS client, verifier, preference source and store worker. No network I/O yet.
 
     The worker opens its connection on its own thread as soon as it is constructed, so a
     database that cannot be opened surfaces on the first call rather than at import time.
+
+    Args:
+        settings: the configuration.
+        transport: an httpx transport for keyring, substituted by tests.
+        preferences: substituted by tests, which read people's settings from a fake rather
+            than a settings-api; built from ``settings`` when omitted.
     """
     clock = SystemClock()
     jwks = JwksClient(
@@ -75,4 +90,5 @@ def build_container(
         verifier=verifier,
         services=ServiceAuthenticator(settings.service_tokens),
         store=StoreWorker(settings.database_path),
+        preferences=preferences if preferences is not None else build_preference_source(settings),
     )

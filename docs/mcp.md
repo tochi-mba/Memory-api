@@ -150,7 +150,9 @@ Every failure is RFC 9457 `application/problem+json` with the same fields and a
 | 404 | No such memory, block or topic **for this account**. | Stop. It is not there, and it is not somebody else's to reach. |
 | 409 | The correction cannot be applied: already superseded, forgotten, moved between scopes, or starting too early. | Re-read the memory and reconsider. Do not delete-then-add instead. |
 | 422 | A rule was broken: a field out of bounds, an unknown query parameter, a search with no words in it, a cursor on a search, or credential-shaped content. | Fix it. If it is a credential, it belongs in keyring — not re-encoded. |
+| 422 `below-importance-floor` | The person chose not to have things this unimportant remembered. | Let it go. Raise `importance` only if the memory really matters more; inflating it to get past the floor overrides their choice. |
 | 503 | keyring could not be reached, so the token could not be checked. | Retry after `Retry-After`. The token is probably fine. |
+| 503 `preferences-unavailable` | A new memory needed the person's importance floor and settings-api could not say. Nothing was stored. | Retry later. Do not tell the person it was remembered. |
 
 ## What is already in place
 

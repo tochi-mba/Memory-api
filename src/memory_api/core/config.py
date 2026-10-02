@@ -12,7 +12,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Annotated, Self
 
 from keyring_client import check_service_token
-from pydantic import Field, field_validator, model_validator
+from pydantic import AfterValidator, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
@@ -22,6 +22,20 @@ ENV_PREFIX = "MEMORY_"
 
 PositiveInt = Annotated[int, Field(gt=0)]
 PositiveFloat = Annotated[float, Field(gt=0)]
+
+
+def _validated_service_token(value: SecretStr | None) -> SecretStr | None:
+    """Refuse a token settings-api would never accept, without echoing it.
+
+    Runs after wrapping as ``SecretStr``, so a validation error's input is the secret
+    (asterisks), not the presented string.
+    """
+    if value is not None:
+        check_service_token(value.get_secret_value())
+    return value
+
+
+ServiceToken = Annotated[SecretStr | None, AfterValidator(_validated_service_token)]
 
 # The health routes `api/routers/health.py` serves. The meta-repo's parity check looks for
 # these literals in this repository's source, and finds them in the router as well as here.
@@ -102,6 +116,55 @@ class Settings(BaseSettings):
     jwks_cache_seconds: PositiveFloat = 3_600.0
     jwks_min_refetch_seconds: PositiveFloat = 30.0
     keyring_timeout_seconds: PositiveFloat = 5.0
+
+    # -- Per-person settings -----------------------------------------------------------
+    settings_api_base_url: str | None = None
+    """Where settings-api is. Unset, every person gets this service as it stands.
+
+    Set, a write reads its owner's ``memory.write_importance_floor`` and refuses a new
+    memory below it. Nothing else in the ``memory`` namespace is read here: see
+    :mod:`memory_api.core.preferences` for which entries other services read and which
+    this one cannot honour yet.
+    """
+
+    settings_api_token: ServiceToken = None
+    """This service's entry in settings-api's ``SETTINGS_API_SERVICES``.
+
+    At least 32 characters, the rule settings-api enforces on its side. Its grant there
+    needs ``audience_prefix`` equal to ``MEMORY_AUDIENCE`` (``memory-api`` unless the
+    operator changed it): settings-api is shown the same user token keyring minted.
+    """
+
+    @property
+    def settings_api(self) -> tuple[str, SecretStr] | None:
+        """Where settings-api is and how to authenticate to it, or ``None`` when unused.
+
+        One value rather than two optional ones, so nothing downstream has to re-establish
+        that the pair is whole: :meth:`_check_settings_api_is_whole` already refused to
+        construct settings where it is not.
+        """
+        if self.settings_api_base_url is None or self.settings_api_token is None:
+            return None
+        return self.settings_api_base_url, self.settings_api_token
+
+    @field_validator("settings_api_base_url")
+    @classmethod
+    def _blank_is_unset(cls, value: str | None) -> str | None:
+        """``MEMORY_SETTINGS_API_BASE_URL=`` in a ``.env`` means off, not an empty URL."""
+        return value or None
+
+    @model_validator(mode="after")
+    def _check_settings_api_is_whole(self) -> Self:
+        """Refuse half a settings-api configuration.
+
+        A URL with no token would be refused on every call, and a token with no URL is a
+        secret configured for nothing. Either is somebody's mistake, and startup is the
+        cheapest place to hear about it.
+        """
+        if (self.settings_api_base_url is None) != (self.settings_api_token is None):
+            msg = "settings_api_base_url and settings_api_token must be set together"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def _audience_is_usable(self) -> Self:

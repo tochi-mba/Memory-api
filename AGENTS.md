@@ -42,4 +42,7 @@ Copy `.env.example` to `.env` before `make run`; the settings are explained in
 - Confirming a memory stamps `confirmed_at` and never rewrites `trust`. Retrieval and the
   index gate on the confirmation, so provenance survives being vouched for.
 - `operation_id`s are public API -- they become MCP tool names. A contract test pins the set.
+- settings-api is shown only a token this service has already verified, and only through
+  `core/preferences.py`. A person's importance floor is never guessed: when it cannot be
+  read, a write that adds a memory is a 503, and nothing that does not add one is failed.
 - No `pragma: no cover`. No setting that disables verification.
