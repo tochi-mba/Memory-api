@@ -6,6 +6,12 @@ All notable changes to memory-api are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **settings-client 0.4.1.** A single-flight lock is dropped by the last caller out. Older
+  clients kept the lock of every resolve that failed (an outage, a refused grant) for good,
+  one per token, and keyring tokens rotate every few minutes.
+
 ### Added
 
 - **A person's importance floor.** With `MEMORY_SETTINGS_API_BASE_URL` and
