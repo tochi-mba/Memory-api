@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import httpx
 import pytest
 from pydantic import SecretStr, ValidationError
 from settings_client import HttpSettingsClient
@@ -165,6 +166,52 @@ class TestAnOutage:
 
         assert (await source(fake).for_token(TOKEN)).importance_floor() == 4
         assert f"settings_stale namespace={NAMESPACE}" in caplog.text
+
+    async def test_a_persons_cached_floor_is_used_through_an_outage(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """The gap, named: the stale answer above is a fallback default, the same for
+        everybody, so nothing showed that a floor settings-api told this service for one
+        person is the one used for them -- rather than refused -- when it goes down. The
+        real client, whose per-token cache is what serves it."""
+        caplog.set_level(logging.INFO, logger="memory_api.core.preferences")
+        down = False
+
+        def settings_api(request: httpx.Request) -> httpx.Response:
+            if down:
+                message = "settings-api is down"
+                raise httpx.ConnectError(message, request=request)
+            return httpx.Response(
+                200,
+                headers={"ETag": '"1"'},
+                json={
+                    "settings": {FLOOR: 7},
+                    "fallbacks": {FLOOR: {"default": 1, "on_unavailable": "refuse"}},
+                    "revision": 1,
+                },
+            )
+
+        client = HttpSettingsClient(
+            base_url=SETTINGS_API_URL,
+            service_token=SETTINGS_API_TOKEN,
+            ttl_seconds=0,  # Every resolve goes to settings-api, so the outage is met.
+            transport=httpx.MockTransport(settings_api),
+        )
+        preferences = source(client)
+        try:
+            assert (await preferences.for_token(TOKEN)).importance_floor() == 7
+            down = True
+
+            cached = await preferences.for_token(TOKEN)
+            stranger = await preferences.for_token("a-token-never-seen")
+        finally:
+            await preferences.aclose()
+
+        # Theirs, not the catalogue's default of one, and not refused for being stale.
+        assert cached.importance_floor() == 7
+        assert f"settings_stale namespace={NAMESPACE}" in caplog.text
+        # Nobody else is given it: with nothing cached for them, the key refuses.
+        assert stranger == UNKNOWN
 
     async def test_a_refusal_of_this_service_fails_rather_than_degrades(
         self, caplog: pytest.LogCaptureFixture
