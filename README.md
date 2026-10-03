@@ -91,8 +91,9 @@ look old and evicts it, while yesterday's one-off survives.
 Set `MEMORY_SETTINGS_API_BASE_URL` and `MEMORY_SETTINGS_API_TOKEN` together and a new
 memory is held to the importance floor its owner chose in
 [settings-api](https://github.com/tochi-mba/Settings-api) (`memory.write_importance_floor`):
-below it, the write is refused rather than stored. If their floor cannot be read, nothing new
-is written on a guess. Unset, which is the default, everything is kept as before.
+below it, the write is refused rather than stored. Repeating something already remembered
+revises it and is never refused. If their floor cannot be read, nothing new is written on a
+guess. Unset, which is the default, everything is kept as before.
 `memory.consolidation` is not read yet; [docs/operations.md](docs/operations.md#settings-api)
 says why.
 

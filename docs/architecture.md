@@ -49,10 +49,14 @@ the layering is held up by there being five packages you can read in an afternoo
 With settings-api configured, a write that adds a memory reads its owner's
 `memory.write_importance_floor`, through `PreferencesDep` (or `ServicePreferencesDep` on
 `/v1/internal`). Both depend on the verified caller first, so settings-api is never shown a
-token this service refused. The floor is read lazily: `Preferences.importance_floor()` is
-called only by a write that needs it, so a batch of corrections or a read is never failed
-because settings-api is down. `domain/importance.py` holds what the floor applies to — a
-create and a batch `ADD`, never a correction. `memory.consolidation` is not read: the
+token this service refused. The floor is read lazily: the dependency asks settings-api
+nothing, and `PersonPreferences.importance_floor()` is awaited only by a write that turns out
+to add a memory, so a read, a correction, a repeat or a batch that adds nothing new is never
+failed or held up by settings-api. Only the store knows whether a write adds a memory or
+repeats one, so `domain/importance.within_floor` applies a write first with the floor
+unasked; the store rolls back at the first new memory, and the write is applied again held
+to the floor. `domain/importance.py` holds what the floor applies to — a create and a batch
+`ADD` that add a new memory, never a correction or a repeat. `memory.consolidation` is not read: the
 consolidator is a background pass with no person's token to present, and there is no
 session-end signal for its default to mean anything.
 

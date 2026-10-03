@@ -16,13 +16,22 @@ All notable changes to memory-api are recorded here. The format follows
   this service (401/403) failed a batch of `UPDATE`, `DELETE` and `NOOP` decisions with a
   503, and a slow one held it up, although the floor has no say in any of them. The
   floor is now asked for only when a write needs it.
+- **A repeat is never held to the importance floor.** Writing a claim already remembered
+  revises the stored memory's importance, expiry and confidence and adds nothing, but the
+  floor treated it as a new memory: lowering the importance of something remembered, or
+  setting it to expire, through a repeat below the floor was a 422 saying nothing was
+  stored, and the floor made memory-api keep more about the person rather than less. The
+  store now decides, in the transaction that applies the write, whether it adds a memory,
+  and holds only that to the floor; a repeat, and a batch whose `ADD`s all repeat, never
+  asks settings-api.
 
 ### Added
 
 - **A person's importance floor.** With `MEMORY_SETTINGS_API_BASE_URL` and
   `MEMORY_SETTINGS_API_TOKEN` set, a new memory -- `create_memory`,
   `internal_create_memory`, or an `ADD` in `reconcile_memories` -- is held to the
-  `memory.write_importance_floor` its owner chose in settings-api. Below it is a 422
+  `memory.write_importance_floor` its owner chose in settings-api (a repeat of a
+  remembered memory adds nothing and is not held to it). Below it is a 422
   `below-importance-floor` and nothing is stored; one `ADD` below it refuses the whole
   batch and names the decisions that were the reason. A correction is not held to it. The
   floor is never guessed: when settings-api cannot say, a write that adds a memory is a 503

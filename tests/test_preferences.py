@@ -29,17 +29,16 @@ from memory_api.core.preferences import (
     build_preference_source,
 )
 from memory_api.domain.errors import BelowImportanceFloorError, PreferencesUnavailableError
-from memory_api.domain.importance import (
-    LOWEST,
-    refuse_additions_below_floor,
-    refuse_below_floor,
-)
-from memory_api.domain.models import Decision, MemoryInput
+from memory_api.domain.importance import LOWEST, UNASKED, FloorNotAskedError, hold, within_floor
+from memory_api.domain.models import Decision, MemoryInput, Selection
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
 
+    from memory_api.store.sql import SQLStore
+
 TOKEN = "user-token-for-settings"
+ACCOUNT = "acct_example"
 SETTINGS_API_URL = "http://settings.test"
 SETTINGS_API_TOKEN = "s" * 32
 
@@ -229,9 +228,11 @@ class TestConfiguration:
 
 
 class TestWhatTheFloorAppliesTo:
-    """The domain rules, without HTTP: :mod:`memory_api.domain.importance`."""
+    """The rules without HTTP: :mod:`memory_api.domain.importance`, applied by the store."""
 
-    async def test_an_addition_below_the_floor_names_its_position_and_nothing_else(self) -> None:
+    def test_an_addition_below_the_floor_names_its_position_and_nothing_else(
+        self, store: SQLStore
+    ) -> None:
         decisions = [
             Decision(action="ADD", memory=MemoryInput(title="Keep", importance=8)),
             Decision(action="ADD", memory=MemoryInput(title="Secret-ish trivia", importance=2)),
@@ -239,33 +240,68 @@ class TestWhatTheFloorAppliesTo:
         ]
 
         with pytest.raises(BelowImportanceFloorError) as caught:
-            await refuse_additions_below_floor(decisions, floor_of(3))
+            store.batch(ACCOUNT, ACCOUNT, decisions, floor=3)
 
         message = str(caught.value)
         assert ": 1, 2." in message
         assert "trivia" not in message
         assert caught.value.status == 422
         assert caught.value.code == "below-importance-floor"
+        assert store.listing(ACCOUNT, Selection()).data == []
 
-    async def test_a_batch_that_adds_nothing_never_asks_for_the_floor(self) -> None:
+    async def test_a_batch_that_adds_nothing_never_asks_for_the_floor(
+        self, store: SQLStore
+    ) -> None:
         """The bug, named: a batch of corrections and forgets failed during a settings-api
         outage for a floor it had no use for."""
+        first, second, third = (
+            store.write(ACCOUNT, ACCOUNT, MemoryInput(title=title)).id
+            for title in ("One", "Two", "Three")
+        )
 
         async def unreadable() -> int:
             raise PreferencesUnavailableError(NOT_GUESSED)
 
+        async def apply(floor: int | None) -> int:
+            decisions = [
+                Decision(
+                    action="UPDATE", memory_id=first, memory=MemoryInput(title="x", importance=1)
+                ),
+                Decision(action="DELETE", memory_id=second),
+                Decision(action="NOOP", memory_id=third),
+            ]
+            return len(store.batch(ACCOUNT, ACCOUNT, decisions, floor=floor))
+
+        assert await within_floor(apply, unreadable) == 3
+
+    def test_an_unasked_floor_rolls_back_at_the_first_new_memory(self, store: SQLStore) -> None:
+        """What makes asking lazily safe: the first attempt stops at a new memory, before
+        the floor it is held to is known, and leaves nothing it did behind."""
+        kept = store.write(ACCOUNT, ACCOUNT, MemoryInput(title="Kept"))
         decisions = [
-            Decision(
-                action="UPDATE", memory_id="mem_1", memory=MemoryInput(title="x", importance=1)
-            ),
-            Decision(action="DELETE", memory_id="mem_2"),
-            Decision(action="NOOP", memory_id="mem_3"),
+            Decision(action="DELETE", memory_id=kept.id),
+            Decision(action="ADD", memory=MemoryInput(title="New")),
         ]
 
-        await refuse_additions_below_floor(decisions, unreadable)
+        with pytest.raises(FloorNotAskedError):
+            store.batch(ACCOUNT, ACCOUNT, decisions, floor=UNASKED)
 
-    async def test_additions_at_the_floor_pass(self) -> None:
+        assert [row.title for row in store.listing(ACCOUNT, Selection()).data] == ["Kept"]
+
+    async def test_a_write_that_adds_a_memory_is_applied_again_held_to_the_floor(
+        self, store: SQLStore
+    ) -> None:
+        attempts: list[int | None] = []
+
+        async def apply(floor: int | None) -> str:
+            attempts.append(floor)
+            return store.write(ACCOUNT, ACCOUNT, MemoryInput(title="New"), floor=floor).title
+
+        assert await within_floor(apply, floor_of(5)) == "New"
+        assert attempts == [UNASKED, 5]
+
+    def test_additions_at_the_floor_pass(self, store: SQLStore) -> None:
         at = MemoryInput(title="Exactly enough", importance=3)
 
-        refuse_below_floor(at, 3)
-        await refuse_additions_below_floor([Decision(action="ADD", memory=at)], floor_of(3))
+        hold(at, 3)
+        assert len(store.batch(ACCOUNT, ACCOUNT, [Decision(action="ADD", memory=at)], floor=3)) == 1

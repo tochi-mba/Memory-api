@@ -168,6 +168,83 @@ class TestCorrecting:
         assert [row["body"] for row in found.json()["data"]] == ["Bristol"]
 
 
+class TestRepeating:
+    """A write that repeats a remembered claim revises it and adds nothing new."""
+
+    async def test_a_repeat_below_the_floor_downgrades_and_retires_what_is_remembered(
+        self, http: AsyncClient, settings_api: FakeSettingsClient
+    ) -> None:
+        """The bug, named: a repeat is a revision of the memory it duplicates, but the floor
+        treated it as a new memory and refused it with a 422 saying nothing was stored -- so
+        lowering the importance of, or setting an expiry on, something already remembered
+        was refused, and the floor made memory-api keep more about the person, not less."""
+        original = await http.post(
+            "/v1/memory", headers=bearer(), json={"title": "Home city", "importance": 8}
+        )
+        asked = settings_api.resolves
+        repeat = {"title": "Home city", "importance": 1, "expires_at": 4_000_000_000}
+
+        public = await http.post("/v1/memory", headers=bearer(), json=repeat)
+        internal = await http.post(
+            "/v1/internal/memory", headers=internal_headers(), json={**repeat, "importance": 2}
+        )
+
+        assert public.status_code == internal.status_code == 201, public.text
+        assert public.json()["id"] == internal.json()["id"] == original.json()["id"]
+        assert public.json()["importance"] == 1
+        assert public.json()["expires_at"] == 4_000_000_000
+        assert internal.json()["importance"] == 2
+        # A repeat adds nothing, so the floor is never even asked for.
+        assert settings_api.resolves == asked
+
+    async def test_a_batch_add_that_repeats_is_applied_and_only_a_new_one_is_named(
+        self, http: AsyncClient
+    ) -> None:
+        await http.post("/v1/memory", headers=bearer(), json={"title": "Home city"})
+        repeating = {"action": "ADD", "memory": {"title": "Home city", "importance": 1}}
+        adding = {"action": "ADD", "memory": {"title": "Had toast", "importance": 1}}
+
+        refused = await http.post(
+            "/v1/memory/batch", headers=bearer(), json={"decisions": [repeating, adding]}
+        )
+        applied = await http.post(
+            "/v1/memory/batch", headers=bearer(), json={"decisions": [repeating]}
+        )
+
+        assert refused.status_code == 422
+        assert ": 1." in refused.json()["detail"]
+        assert applied.status_code == 200, applied.text
+        assert applied.json()["data"][0]["importance"] == 1
+        assert await stored(http) == ["Home city"]
+
+    async def test_a_repeat_carries_on_through_an_outage(
+        self, http: AsyncClient, settings_api: FakeSettingsClient
+    ) -> None:
+        await http.post("/v1/memory", headers=bearer(), json={"title": "Home city"})
+        settings_api.unavailable = True
+
+        repeat = await http.post(
+            "/v1/memory", headers=bearer(), json={"title": "Home city", "importance": 1}
+        )
+        new = await http.post("/v1/memory", headers=bearer(), json={"title": "Work city"})
+
+        assert repeat.status_code == 201, repeat.text
+        assert new.status_code == 503
+
+    async def test_repeating_a_forgotten_memory_is_a_new_one_and_held_to_the_floor(
+        self, http: AsyncClient
+    ) -> None:
+        original = await http.post("/v1/memory", headers=bearer(), json={"title": "Home city"})
+        await http.post(f"/v1/memory/{original.json()['id']}/forget", headers=bearer())
+
+        response = await http.post(
+            "/v1/memory", headers=bearer(), json={"title": "Home city", "importance": 1}
+        )
+
+        assert response.status_code == 422
+        assert response.json()["type"] == PROBLEMS + "below-importance-floor"
+
+
 class TestBatches:
     async def test_one_addition_below_the_floor_refuses_the_whole_batch(
         self, http: AsyncClient
