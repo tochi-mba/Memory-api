@@ -181,7 +181,10 @@ a person may choose `memory.write_importance_floor`: how important something has
 before it is worth remembering. A new memory whose `importance` (5 when left out) is below
 it is a 422 `below-importance-floor` and nothing is stored — never a quiet 201. When the
 floor cannot be read, the write is a 503 `preferences-unavailable` rather than a guess, and
-can be tried again. A correction is not held to the floor. Without settings-api there is no
+can be tried again. A correction is not held to the floor, and neither is a write that
+repeats a memory already remembered: that revises the stored memory's importance, expiry
+and confidence and adds nothing, so lowering the importance of something known, or setting
+it to expire, is never refused for being below the floor. Without settings-api there is no
 floor and every write is kept, as it always was. See
 [docs/operations.md](operations.md#settings-api).
 
@@ -272,12 +275,13 @@ One to a hundred decisions. `ADD` and `UPDATE` require a `memory`; `UPDATE`, `DE
 `NOOP` require a `memory_id`; anything else is a 422. `UPDATE` is a correction, `DELETE` is
 a forget.
 
-Each `ADD` is held to its owner's importance floor. One below it refuses the **whole**
-batch with a 422 `below-importance-floor` whose detail names the positions of the decisions
-that were the reason, never their content: leave those out and send the rest again. An
-`UPDATE` is a correction and is not held to it. A batch with no `ADD` never asks
-settings-api at all, so it is never failed or held up by settings-api being down, slow or
-refusing this service.
+Each `ADD` that adds a new memory is held to its owner's importance floor. One below it
+refuses the **whole** batch with a 422 `below-importance-floor` whose detail names the
+positions of the decisions that were the reason, never their content: leave those out and
+send the rest again. An `UPDATE` is a correction and is not held to it, and an `ADD` that
+repeats a memory already remembered revises it and is not held to it either. A batch that
+adds no new memory never asks settings-api at all, so it is never failed or held up by
+settings-api being down, slow or refusing this service.
 
 `data[i]` is the memory decision `i` produced, in order — which is the only way a caller
 can tell which of its NOOPs was actually a NOOP. Send NOOP for what you decided to leave
@@ -462,7 +466,7 @@ failing request and asserts it appears nowhere in the response.
 | 422 | `validation-failed` | The request body or query string broke a rule, including a number that is not finite. Carries `errors`. |
 | 422 | `invalid-memory` | A search query with no words in it, `after`/`before` on `search_memories`, or an `expires_at` that does not follow the memory's `valid_from` once the store has filled it in (`expires_at must follow valid_from`). |
 | 422 | `credential-refused` | Credential-shaped content. The message names keyring. |
-| 422 | `below-importance-floor` | A new memory, or a batch `ADD`, is less important than the floor its owner chose in settings-api. Nothing was stored. |
+| 422 | `below-importance-floor` | A new memory, from a create or a batch `ADD`, is less important than the floor its owner chose in settings-api. Nothing was stored. A repeat of a remembered memory is never refused for it. |
 | 500 | `internal-server-error` | A bug. The detail is withheld deliberately — quote the `request_id`. |
 | 503 | `keyring-unreachable` | keyring's signing keys could not be fetched. Carries `Retry-After: 5`. Not your token. |
 | 503 | `preferences-unavailable` | A write that adds a memory needed its owner's importance floor and settings-api could not say, or refused this service. Nothing was stored; try again. |

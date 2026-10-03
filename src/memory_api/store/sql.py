@@ -11,8 +11,15 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from memory_api.domain import importance as floor_rules
 from memory_api.domain import topics as topic_rules
-from memory_api.domain.errors import ConflictError, MemoryFault, NotFoundError, SecretError
+from memory_api.domain.errors import (
+    BelowImportanceFloorError,
+    ConflictError,
+    MemoryFault,
+    NotFoundError,
+    SecretError,
+)
 from memory_api.domain.models import (
     Block,
     BlockInput,
@@ -260,7 +267,12 @@ class SQLStore:
         return self._decode(row)
 
     def _write(
-        self, account: str, asserted_by: str, request: MemoryInput, target: str | None = None
+        self,
+        account: str,
+        asserted_by: str,
+        request: MemoryInput,
+        target: str | None = None,
+        floor: int | None = floor_rules.LOWEST,
     ) -> Memory:
         refuse_secrets(request.model_dump())
         now = self.clock()
@@ -297,6 +309,10 @@ class SQLStore:
         ).fetchall()
         if candidates and previous is None:
             return self._refresh(self._decode(candidates[0]), request)
+        if previous is None:
+            # Only here is it known that this write adds a memory rather than repeating or
+            # correcting one, so only here is it held to the floor.
+            floor_rules.hold(request, floor)
         self._require_expiry_after_start(
             now if request.valid_from is None else request.valid_from, request.expires_at
         )
@@ -530,10 +546,21 @@ class SQLStore:
         self._save(previous)
 
     def write(
-        self, account: str, asserted_by: str, request: MemoryInput, target: str | None = None
+        self,
+        account: str,
+        asserted_by: str,
+        request: MemoryInput,
+        target: str | None = None,
+        *,
+        floor: int | None = floor_rules.LOWEST,
     ) -> Memory:
+        """Write, repeat or correct one memory; a new one is held to ``floor``.
+
+        ``floor`` is :data:`~memory_api.domain.importance.UNASKED` on a caller's first
+        attempt, and a new memory then rolls back with ``FloorNotAskedError``.
+        """
         with self.db:
-            return self._write(account, asserted_by, request, target)
+            return self._write(account, asserted_by, request, target, floor)
 
     def _transition(self, account: str, memory_id: str, action: str) -> Memory:
         memory = self.get(account, memory_id)
@@ -561,23 +588,42 @@ class SQLStore:
         with self.db:
             return self._transition(account, memory_id, action)
 
-    def batch(self, account: str, asserted_by: str, decisions: list[Decision]) -> list[Memory]:
+    def batch(
+        self,
+        account: str,
+        asserted_by: str,
+        decisions: list[Decision],
+        *,
+        floor: int | None = floor_rules.LOWEST,
+    ) -> list[Memory]:
+        """Apply every decision or none; each ``ADD`` that adds a memory is held to ``floor``.
+
+        Every ``ADD`` below it is found before the batch is refused, so the refusal names
+        them all; an ``ADD`` that repeats a memory is a revision and is not held to it.
+        """
         result = []
+        below = []
         with self.db:
-            for decision in decisions:
+            for index, decision in enumerate(decisions):
                 if decision.action in {"ADD", "UPDATE"}:
-                    result.append(
-                        self._write(
+                    try:
+                        written = self._write(
                             account,
                             asserted_by,
                             MemoryInput.model_validate(decision.memory),
                             decision.memory_id if decision.action == "UPDATE" else None,
+                            floor,
                         )
-                    )
+                    except BelowImportanceFloorError:
+                        below.append(index)
+                        continue
+                    result.append(written)
                 elif decision.action == "DELETE":
                     result.append(self._transition(account, str(decision.memory_id), "forget"))
                 else:
                     result.append(self.get(account, str(decision.memory_id)))
+            if below:
+                raise floor_rules.refuse_batch(below)
         return result
 
     def _where(

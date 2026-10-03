@@ -200,16 +200,18 @@ needs `audience_prefix` equal to `MEMORY_AUDIENCE` (`memory-api` unless you chan
 the person's floor is a 422 `below-importance-floor` and is not stored; in a batch, one
 `ADD` below it refuses the whole batch and names the decisions that were the reason. A
 correction (`correct_memory`, or a batch `UPDATE`) is not held to it: it replaces something
-already remembered, and refusing it would leave what it corrects standing. A write that
-names no importance carries 5. The catalogue says this setting **refuses** rather than
+already remembered, and refusing it would leave what it corrects standing. Nor is a write
+that repeats a memory already remembered: it revises that memory's importance, expiry and
+confidence and stores nothing new, and refusing it would keep more about the person rather
+than less. A write that names no importance carries 5. The catalogue says this setting **refuses** rather than
 falls back, so when the floor cannot be known — settings-api has never answered, is down
 with nothing cached for that person, or answered with a value that is not a floor — the
 write is a 503 `preferences-unavailable` and nothing is stored. A settings-api that has no
 such key cannot have been told a floor, and everything is kept. If settings-api refuses
 this service (401/403), a write that adds a memory is a 503 with a fixed body that names
 neither the grant nor the URL. settings-api is asked only when a write would add a memory,
-so a refusal, an outage or a slow answer never touches a read, a correction, a forget or a
-batch with no `ADD`.
+so a refusal, an outage or a slow answer never touches a read, a correction, a repeat, a
+forget or a batch that adds no new memory.
 
 settings-api answers a person who never chose with the catalogue's default, and this
 service cannot tell that apart from a choice. Keeping everything for them needs that

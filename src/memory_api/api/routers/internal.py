@@ -20,7 +20,7 @@ from memory_api.api.dependencies import (
     asserted_by,
 )
 from memory_api.api.schemas import BlockList, Problem
-from memory_api.domain.importance import refuse_below_floor
+from memory_api.domain.importance import within_floor
 from memory_api.domain.models import Memory, MemoryInput, Page, TopicDetail, TopicPage
 
 router = APIRouter(prefix="/v1/internal/memory", tags=["internal"])
@@ -64,7 +64,8 @@ FOR_A_SIBLING = (
     description=(
         "Records one memory for the person named by the user token, if it is at least as "
         "important as the floor that person chose: below it is a 422 `below-importance-floor`, "
-        "and a floor that cannot be read is a 503 rather than a guess. " + FOR_A_SIBLING
+        "and a floor that cannot be read is a 503 rather than a guess. A repeat of a "
+        "remembered memory revises it and is not held to the floor. " + FOR_A_SIBLING
     ),
 )
 async def create_memory(
@@ -73,9 +74,13 @@ async def create_memory(
     preferences: ServicePreferencesDep,
     store: StoreDep,
 ) -> Memory:
-    refuse_below_floor(request, await preferences.importance_floor())
     account, author = caller.account_id, asserted_by(caller)
-    return await store.call(lambda handle: handle.write(account, author, request))
+    return await within_floor(
+        lambda floor: store.call(
+            lambda handle: handle.write(account, author, request, floor=floor)
+        ),
+        preferences.importance_floor,
+    )
 
 
 @router.get(

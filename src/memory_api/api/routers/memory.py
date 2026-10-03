@@ -37,7 +37,7 @@ from memory_api.api.dependencies import (
     asserted_by,
 )
 from memory_api.api.schemas import BatchResult, BlockList, ForgetAllResult, Problem
-from memory_api.domain.importance import refuse_additions_below_floor, refuse_below_floor
+from memory_api.domain.importance import within_floor
 from memory_api.domain.models import Batch, Block, BlockInput, Memory, MemoryInput, Page
 
 router = APIRouter(prefix="/v1/memory", tags=["memory"])
@@ -69,7 +69,8 @@ LabelPath = Annotated[
 FLOOR = (
     "A new memory less important than the floor this person chose is refused with a 422 "
     "`below-importance-floor` and not stored. When their settings cannot be read the floor "
-    "is not guessed: the write is a 503 `preferences-unavailable`, and can be tried again."
+    "is not guessed: the write is a 503 `preferences-unavailable`, and can be tried again. "
+    "A write repeating a memory already remembered adds nothing and is not held to it."
 )
 
 NOT_YOURS = (
@@ -103,10 +104,14 @@ NOT_YOURS = (
 async def create_memory(
     request: MemoryInput, caller: CurrentCallerDep, preferences: PreferencesDep, store: StoreDep
 ) -> Memory:
-    """Write one memory for the verified caller, if it clears their importance floor."""
-    refuse_below_floor(request, await preferences.importance_floor())
+    """Write one memory for the verified caller; a new one must clear their floor."""
     account, author = caller.account_id, asserted_by(caller)
-    return await store.call(lambda handle: handle.write(account, author, request))
+    return await within_floor(
+        lambda floor: store.call(
+            lambda handle: handle.write(account, author, request, floor=floor)
+        ),
+        preferences.importance_floor,
+    )
 
 
 # -- Reads: literal paths first, because Starlette matches in order ----------------------
@@ -255,19 +260,24 @@ async def delete_memory_block(
         "Send NOOP for what you decided to leave alone. It costs one row read and makes the "
         "result a complete account of what the pass considered, rather than only of what it "
         "changed. `data[i]` is the memory decision `i` produced, in order.\n\n"
-        "Each ADD is held to the importance floor this person chose, and one below it "
-        "refuses the whole batch with a 422 naming which decisions were the reason. An UPDATE "
-        "is a correction and is not held to it. A batch with no ADD never asks settings-api "
+        "Each ADD that adds a new memory is held to the importance floor this person chose, "
+        "and one below it refuses the whole batch with a 422 naming which decisions were the "
+        "reason. An UPDATE is a correction, and an ADD repeating a remembered memory revises "
+        "it: neither is held to it. A batch that adds no new memory never asks settings-api "
         "for the floor, so it is never failed or held up by settings-api."
     ),
 )
 async def reconcile_memories(
     request: Batch, caller: CurrentCallerDep, preferences: PreferencesDep, store: StoreDep
 ) -> BatchResult:
-    """Apply every decision in one transaction, if every addition clears the floor."""
-    await refuse_additions_below_floor(request.decisions, preferences.importance_floor)
-    account, author = caller.account_id, asserted_by(caller)
-    applied = await store.call(lambda handle: handle.batch(account, author, request.decisions))
+    """Apply every decision in one transaction, if every new memory clears the floor."""
+    account, author, decisions = caller.account_id, asserted_by(caller), request.decisions
+    applied = await within_floor(
+        lambda floor: store.call(
+            lambda handle: handle.batch(account, author, decisions, floor=floor)
+        ),
+        preferences.importance_floor,
+    )
     return BatchResult(data=applied)
 
 
