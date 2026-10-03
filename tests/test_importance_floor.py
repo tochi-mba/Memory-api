@@ -11,12 +11,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 from asgi_lifespan import LifespanManager
+from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import ASGITransport, AsyncClient
 from keyring_client.testing import ISSUER, mint
 from settings_client.testing import FakeSettingsClient
 
 from conftest import ACCOUNT, AUDIENCE, bearer, build_settings
 from memory_api.api.app import create_app
+from memory_api.api.dependencies import PreferencesDep, ServicePreferencesDep
 from memory_api.core.preferences import FLOOR, NAMESPACE, SettingsApiPreferences
 
 if TYPE_CHECKING:
@@ -49,11 +51,18 @@ async def http(
         yield client
 
 
-def internal_headers() -> dict[str, str]:
+def internal_headers(user_token: str | None = None) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {SERVICE_TOKEN}",
-        "X-Keyring-User-Token": mint(account_id=ACCOUNT, audience=AUDIENCE, issuer=ISSUER),
+        "X-Keyring-User-Token": user_token
+        or mint(account_id=ACCOUNT, audience=AUDIENCE, issuer=ISSUER),
     }
+
+
+def forged() -> str:
+    """A token for this account and this service, signed by a key keyring never held."""
+    stranger = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return mint(account_id=ACCOUNT, audience=AUDIENCE, issuer=ISSUER, key=stranger)
 
 
 async def stored(http: AsyncClient) -> list[str]:
@@ -122,6 +131,63 @@ class TestCreating:
         )
 
         assert response.status_code == 401
+        assert settings_api.resolves == 0
+
+
+class TestWhoSettingsApiSees:
+    """The preferences dependencies themselves, on a route that depends on nothing else.
+
+    Every real route also depends on the caller, so a 401 there proves nothing about the
+    preferences dependency: these probes take only it, and ask for the floor whatever they
+    are given, so a dependency that stopped verifying the token first would show settings-api
+    a forged one here.
+    """
+
+    @pytest.fixture
+    async def probed(
+        self, keyring: FakeKeyring, settings_api: FakeSettingsClient
+    ) -> AsyncIterator[AsyncClient]:
+        app = create_app(
+            build_settings(service_tokens={"lucy-api": SERVICE_TOKEN}),
+            transport=keyring.transport(),
+            preferences=SettingsApiPreferences(client=settings_api),
+        )
+
+        async def person(preferences: PreferencesDep) -> int:
+            return await preferences.importance_floor()
+
+        async def sibling(preferences: ServicePreferencesDep) -> int:
+            return await preferences.importance_floor()
+
+        app.add_api_route("/probe/person", person)
+        app.add_api_route("/probe/sibling", sibling)
+        async with (
+            LifespanManager(app),
+            AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client,
+        ):
+            yield client
+
+    async def test_the_probes_reach_settings_api_with_a_verified_token(
+        self, probed: AsyncClient, settings_api: FakeSettingsClient
+    ) -> None:
+        person = await probed.get("/probe/person", headers=bearer())
+        sibling = await probed.get("/probe/sibling", headers=internal_headers())
+
+        assert person.json() == sibling.json() == 4
+        assert settings_api.resolves == 2
+
+    async def test_a_forged_token_never_reaches_settings_api_on_either_surface(
+        self, probed: AsyncClient, settings_api: FakeSettingsClient
+    ) -> None:
+        """The bug, named: the old test of this only drove routes that depend on the caller
+        themselves, so it went on passing with a preferences dependency that no longer did,
+        and that dependency would then show settings-api any token it was handed."""
+        token = forged()
+
+        person = await probed.get("/probe/person", headers={"Authorization": f"Bearer {token}"})
+        sibling = await probed.get("/probe/sibling", headers=internal_headers(token))
+
+        assert person.status_code == sibling.status_code == 401
         assert settings_api.resolves == 0
 
 
