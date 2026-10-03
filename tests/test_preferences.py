@@ -8,6 +8,7 @@ and what a refusal becomes. ``test_importance_floor.py`` drives the same rules o
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -35,6 +36,9 @@ from memory_api.domain.importance import (
 )
 from memory_api.domain.models import Decision, MemoryInput
 
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
 TOKEN = "user-token-for-settings"
 SETTINGS_API_URL = "http://settings.test"
 SETTINGS_API_TOKEN = "s" * 32
@@ -42,6 +46,13 @@ SETTINGS_API_TOKEN = "s" * 32
 
 def source(client: FakeSettingsClient) -> SettingsApiPreferences:
     return SettingsApiPreferences(client=client)
+
+
+def floor_of(level: int) -> Callable[[], Awaitable[int]]:
+    async def floor() -> int:
+        return level
+
+    return floor
 
 
 class TestNobodyAsked:
@@ -220,7 +231,7 @@ class TestConfiguration:
 class TestWhatTheFloorAppliesTo:
     """The domain rules, without HTTP: :mod:`memory_api.domain.importance`."""
 
-    def test_an_addition_below_the_floor_names_its_position_and_nothing_else(self) -> None:
+    async def test_an_addition_below_the_floor_names_its_position_and_nothing_else(self) -> None:
         decisions = [
             Decision(action="ADD", memory=MemoryInput(title="Keep", importance=8)),
             Decision(action="ADD", memory=MemoryInput(title="Secret-ish trivia", importance=2)),
@@ -228,7 +239,7 @@ class TestWhatTheFloorAppliesTo:
         ]
 
         with pytest.raises(BelowImportanceFloorError) as caught:
-            refuse_additions_below_floor(decisions, lambda: 3)
+            await refuse_additions_below_floor(decisions, floor_of(3))
 
         message = str(caught.value)
         assert ": 1, 2." in message
@@ -236,11 +247,11 @@ class TestWhatTheFloorAppliesTo:
         assert caught.value.status == 422
         assert caught.value.code == "below-importance-floor"
 
-    def test_a_batch_that_adds_nothing_never_asks_for_the_floor(self) -> None:
+    async def test_a_batch_that_adds_nothing_never_asks_for_the_floor(self) -> None:
         """The bug, named: a batch of corrections and forgets failed during a settings-api
         outage for a floor it had no use for."""
 
-        def unreadable() -> int:
+        async def unreadable() -> int:
             raise PreferencesUnavailableError(NOT_GUESSED)
 
         decisions = [
@@ -251,10 +262,10 @@ class TestWhatTheFloorAppliesTo:
             Decision(action="NOOP", memory_id="mem_3"),
         ]
 
-        refuse_additions_below_floor(decisions, unreadable)
+        await refuse_additions_below_floor(decisions, unreadable)
 
-    def test_additions_at_the_floor_pass(self) -> None:
+    async def test_additions_at_the_floor_pass(self) -> None:
         at = MemoryInput(title="Exactly enough", importance=3)
 
         refuse_below_floor(at, 3)
-        refuse_additions_below_floor([Decision(action="ADD", memory=at)], lambda: 3)
+        await refuse_additions_below_floor([Decision(action="ADD", memory=at)], floor_of(3))

@@ -73,7 +73,7 @@ async def create_memory(
     preferences: ServicePreferencesDep,
     store: StoreDep,
 ) -> Memory:
-    refuse_below_floor(request, preferences.importance_floor())
+    refuse_below_floor(request, await preferences.importance_floor())
     account, author = caller.account_id, asserted_by(caller)
     return await store.call(lambda handle: handle.write(account, author, request))
 

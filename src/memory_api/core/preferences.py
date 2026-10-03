@@ -113,6 +113,29 @@ UNKNOWN = Preferences(write_importance_floor=None)
 """What a person gets when settings-api cannot say what they chose."""
 
 
+class PersonPreferences:
+    """One verified caller's choices for one request, asked for only when a write needs them.
+
+    A request's dependency builds this from a token it has already verified, and nothing
+    is asked of settings-api until :meth:`importance_floor` is awaited. A batch of
+    corrections and forgets never awaits it, so a settings-api that is down, slow or
+    refusing this service has no say in an operation the floor does not apply to.
+    """
+
+    def __init__(self, source: PreferenceSource, user_token: str) -> None:
+        self._source = source
+        self._user_token = user_token
+
+    async def importance_floor(self) -> int:
+        """The floor, asked of settings-api now.
+
+        Raises:
+            PreferencesUnavailableError: settings-api refused this service, or could not
+                say and this setting is never guessed.
+        """
+        return (await self._source.for_token(self._user_token)).importance_floor()
+
+
 class DeploymentPreferences:
     """Everybody keeps everything: what memory-api did before it read settings-api."""
 
@@ -202,6 +225,7 @@ __all__ = [
     "DEPLOYMENT",
     "UNKNOWN",
     "DeploymentPreferences",
+    "PersonPreferences",
     "Preferences",
     "SettingsApiPreferences",
     "build_preference_source",

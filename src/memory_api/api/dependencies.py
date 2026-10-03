@@ -14,7 +14,8 @@ to ``Selection``, the HTTP surface would silently stop offering it.
 
 **settings-api is only ever shown a token this service has verified.** ``PreferencesDep``
 and ``ServicePreferencesDep`` depend on the caller first, so a forged or expired token is a
-401 here and never becomes a request to settings-api on somebody's behalf.
+401 here and never becomes a request to settings-api on somebody's behalf. And they ask
+nothing themselves: a route asks for the floor when a write needs it, and only then.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from memory_api.auth.services import ServiceCaller
 from memory_api.auth.verifier import TOKEN_REFUSED, AuthenticationError, VerifiedCaller
 from memory_api.core.container import Container
-from memory_api.core.preferences import Preferences
+from memory_api.core.preferences import PersonPreferences
 from memory_api.domain.models import Selection
 from memory_api.store.worker import StoreWorker
 
@@ -106,24 +107,27 @@ ServiceCallerDep = Annotated[ServiceCaller, Depends(get_service_caller)]
 
 async def get_preferences(
     container: ContainerDep, caller: CurrentCallerDep, token: BearerTokenDep
-) -> Preferences:
-    """The verified caller's own settings, read with the token they presented."""
-    del caller  # Depended on so the token is verified before settings-api sees it.
-    return await container.preferences.for_token(token)
+) -> PersonPreferences:
+    """The verified caller's own settings, to be read with the token they presented.
+
+    Nothing is asked here: a route that never needs the floor never reaches settings-api.
+    """
+    del caller  # Depended on so the token is verified before settings-api can see it.
+    return PersonPreferences(container.preferences, token)
 
 
-PreferencesDep = Annotated[Preferences, Depends(get_preferences)]
+PreferencesDep = Annotated[PersonPreferences, Depends(get_preferences)]
 
 
 async def get_service_preferences(
     container: ContainerDep, caller: ServiceCallerDep, user_token: UserTokenDep
-) -> Preferences:
-    """The settings of the person a sibling is acting for, read with that person's token."""
-    del caller  # Depended on so both credentials are checked before settings-api is asked.
-    return await container.preferences.for_token(user_token)
+) -> PersonPreferences:
+    """The settings of the person a sibling is acting for, to be read with their token."""
+    del caller  # Depended on so both credentials are checked before settings-api can be asked.
+    return PersonPreferences(container.preferences, user_token)
 
 
-ServicePreferencesDep = Annotated[Preferences, Depends(get_service_preferences)]
+ServicePreferencesDep = Annotated[PersonPreferences, Depends(get_service_preferences)]
 
 SelectionDep = Annotated[Selection, Query()]
 """Every list and search filter, as query parameters, from the model the store reads.

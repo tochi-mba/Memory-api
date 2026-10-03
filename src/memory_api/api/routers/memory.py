@@ -104,7 +104,7 @@ async def create_memory(
     request: MemoryInput, caller: CurrentCallerDep, preferences: PreferencesDep, store: StoreDep
 ) -> Memory:
     """Write one memory for the verified caller, if it clears their importance floor."""
-    refuse_below_floor(request, preferences.importance_floor())
+    refuse_below_floor(request, await preferences.importance_floor())
     account, author = caller.account_id, asserted_by(caller)
     return await store.call(lambda handle: handle.write(account, author, request))
 
@@ -257,14 +257,15 @@ async def delete_memory_block(
         "changed. `data[i]` is the memory decision `i` produced, in order.\n\n"
         "Each ADD is held to the importance floor this person chose, and one below it "
         "refuses the whole batch with a 422 naming which decisions were the reason. An UPDATE "
-        "is a correction and is not held to it. A batch with no ADD never reads the floor."
+        "is a correction and is not held to it. A batch with no ADD never asks settings-api "
+        "for the floor, so it is never failed or held up by settings-api."
     ),
 )
 async def reconcile_memories(
     request: Batch, caller: CurrentCallerDep, preferences: PreferencesDep, store: StoreDep
 ) -> BatchResult:
     """Apply every decision in one transaction, if every addition clears the floor."""
-    refuse_additions_below_floor(request.decisions, preferences.importance_floor)
+    await refuse_additions_below_floor(request.decisions, preferences.importance_floor)
     account, author = caller.account_id, asserted_by(caller)
     applied = await store.call(lambda handle: handle.batch(account, author, request.decisions))
     return BatchResult(data=applied)
