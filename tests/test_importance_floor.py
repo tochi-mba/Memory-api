@@ -271,6 +271,33 @@ class TestARefusal:
         assert response.json()["type"] == PROBLEMS + "preferences-unavailable"
         assert "granted" not in response.text
 
+    async def test_a_batch_with_no_addition_never_asks_settings_api(
+        self, http: AsyncClient, settings_api: FakeSettingsClient
+    ) -> None:
+        """The bug, named: the batch's preferences dependency asked settings-api for every
+        batch, so a refused grant -- or a slow settings-api -- failed or held up a batch of
+        corrections and forgets that the floor has no say in."""
+        adding = await http.post(
+            "/v1/internal/memory", headers=internal_headers(), json={"title": "Home city"}
+        )
+        assert adding.status_code == 503  # A new memory does need the floor.
+        settings_api.resolves = 0
+
+        batch = await http.post(
+            "/v1/memory/batch",
+            headers=bearer(),
+            json={
+                "decisions": [
+                    {"action": "DELETE", "memory_id": "mem_absent"},
+                    {"action": "NOOP", "memory_id": "mem_absent"},
+                ]
+            },
+        )
+
+        # The batch got as far as the store, which is where an unknown id is a 404.
+        assert batch.status_code == 404
+        assert settings_api.resolves == 0
+
 
 async def test_shutting_down_closes_the_settings_api_client(keyring: FakeKeyring) -> None:
     """The bug, named: a client left open at shutdown leaks its connection pool, and the

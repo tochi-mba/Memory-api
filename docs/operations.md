@@ -204,10 +204,12 @@ already remembered, and refusing it would leave what it corrects standing. A wri
 names no importance carries 5. The catalogue says this setting **refuses** rather than
 falls back, so when the floor cannot be known — settings-api has never answered, is down
 with nothing cached for that person, or answered with a value that is not a floor — the
-write is a 503 `preferences-unavailable` and nothing is stored. Reads, forgets, corrections
-and a batch that adds nothing never need the floor, and carry on through an outage. A settings-api that has no such key
-cannot have been told a floor, and everything is kept. If settings-api refuses this service
-(401/403), the request is a 503 with a fixed body that names neither the grant nor the URL.
+write is a 503 `preferences-unavailable` and nothing is stored. A settings-api that has no
+such key cannot have been told a floor, and everything is kept. If settings-api refuses
+this service (401/403), a write that adds a memory is a 503 with a fixed body that names
+neither the grant nor the URL. settings-api is asked only when a write would add a memory,
+so a refusal, an outage or a slow answer never touches a read, a correction, a forget or a
+batch with no `ADD`.
 
 settings-api answers a person who never chose with the catalogue's default, and this
 service cannot tell that apart from a choice. Keeping everything for them needs that

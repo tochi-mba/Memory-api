@@ -275,8 +275,9 @@ a forget.
 Each `ADD` is held to its owner's importance floor. One below it refuses the **whole**
 batch with a 422 `below-importance-floor` whose detail names the positions of the decisions
 that were the reason, never their content: leave those out and send the rest again. An
-`UPDATE` is a correction and is not held to it, and a batch with no `ADD` is never failed
-because the floor cannot be read.
+`UPDATE` is a correction and is not held to it. A batch with no `ADD` never asks
+settings-api at all, so it is never failed or held up by settings-api being down, slow or
+refusing this service.
 
 `data[i]` is the memory decision `i` produced, in order — which is the only way a caller
 can tell which of its NOOPs was actually a NOOP. Send NOOP for what you decided to leave

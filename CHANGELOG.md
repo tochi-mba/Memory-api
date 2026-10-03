@@ -11,6 +11,11 @@ All notable changes to memory-api are recorded here. The format follows
 - **settings-client 0.4.1.** A single-flight lock is dropped by the last caller out. Older
   clients kept the lock of every resolve that failed (an outage, a refused grant) for good,
   one per token, and keyring tokens rotate every few minutes.
+- **A batch with no `ADD` never asks settings-api.** The batch route's preferences
+  dependency resolved the person's settings for every batch, so a settings-api refusing
+  this service (401/403) failed a batch of `UPDATE`, `DELETE` and `NOOP` decisions with a
+  503, and a slow one held it up, although the floor has no say in any of them. The
+  floor is now asked for only when a write needs it.
 
 ### Added
 

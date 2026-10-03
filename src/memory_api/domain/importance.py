@@ -17,7 +17,8 @@ caller believing something it is not, and a batch that skipped a decision would 
 below the floor refuses the whole batch and says which decisions were the reason.
 
 **Read the floor only when it is needed.** A batch of corrections and forgets never asks for
-it, so settings-api being unreachable does not fail an operation the floor has no say in.
+it -- settings-api is not even asked -- so settings-api being unreachable, slow or refusing
+this service does not fail or delay an operation the floor has no say in.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ from memory_api.domain.errors import BelowImportanceFloorError
 from memory_api.domain.models import MemoryInput
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Awaitable, Callable, Sequence
 
     from memory_api.domain.models import Decision
 
@@ -57,10 +58,13 @@ def refuse_below_floor(memory: MemoryInput, floor: int) -> None:
         raise BelowImportanceFloorError(BELOW_FLOOR)
 
 
-def refuse_additions_below_floor(decisions: Sequence[Decision], floor: Callable[[], int]) -> None:
+async def refuse_additions_below_floor(
+    decisions: Sequence[Decision], floor: Callable[[], Awaitable[int]]
+) -> None:
     """Refuse a batch if any ``ADD`` in it is under the floor; nothing else is held to it.
 
-    ``floor`` is called at most once, and only when the batch adds something.
+    ``floor`` is awaited at most once, and only when the batch adds something: it is what
+    asks settings-api, so a batch with no ``ADD`` never does.
 
     Raises:
         BelowImportanceFloorError: naming the positions of the decisions below it, never
@@ -74,7 +78,7 @@ def refuse_additions_below_floor(decisions: Sequence[Decision], floor: Callable[
     ]
     if not additions:
         return
-    level = floor()
+    level = await floor()
     below = [str(index) for index, memory in additions if memory.importance < level]
     if below:
         message = (
