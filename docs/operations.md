@@ -334,11 +334,13 @@ deleted, so the audit view still has them.
 Only memories in the same compartment merge: the same scope, profile and session. A
 profile's topic also holds each of its sessions' memories, and folding those together would
 move a fact into a compartment that could not see it before, which is what a correction is
-refused for. The summary is written with `trust=inferred` in that compartment, its body is
-the members' bodies joined with `; ` (clamped to 16000 characters), and it takes the title
-of the oldest member and the highest importance among them. The topic's line in the index is
-rewritten from it. Because it is `inferred`, a search with `include_inferred=false` leaves
-it out.
+refused for. The summary is written in that compartment, its body is the members' bodies
+joined with `; ` (clamped to 16000 characters), and it takes the title of the oldest member
+and the highest importance among them. No model is involved, and the merge says nothing its
+members did not, so it takes the trust of its least trusted member: facts a person stated
+stay `stated`, and one `inferred` member makes the summary `inferred`, which a search with
+`include_inferred=false` then leaves out. The topic's line in the index is rewritten from
+it.
 
 It sleeps before its first pass, and like the sweeper a failed pass does not stop the next
 one. Every pass logs `consolidation_completed summaries=N` at INFO or `consolidation_failed

@@ -21,6 +21,7 @@ from memory_api.domain.errors import (
     SecretError,
 )
 from memory_api.domain.models import (
+    TRUST_ORDER,
     Block,
     BlockInput,
     Decision,
@@ -879,7 +880,10 @@ class SQLStore:
             body=body,
             kind="summary",
             source="consolidation",
-            trust="inferred",
+            # The merge joins the members' own words and says nothing new, so it is as trusted
+            # as its least trusted member. Stamped `inferred` whatever they were, a person's
+            # stated facts fell out of every stated-only search a month after they said them.
+            trust=max((item.trust for item in members), key=TRUST_ORDER.index),
             importance=max(item.importance for item in members),
             scope=members[0].scope,
             profile=members[0].profile,

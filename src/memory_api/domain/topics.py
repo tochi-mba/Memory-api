@@ -148,9 +148,10 @@ def summarise(title: str, body: str) -> str:
     """A placeholder summary, good enough until something better writes one.
 
     The first sentence of the body is almost always the fact itself, and the title is the
-    honest fallback when there is no body. A model writes a better summary during
-    consolidation; this exists so that the index is never blank in the meantime, because a
-    blank summary is indistinguishable from a topic about nothing.
+    honest fallback when there is no body. Nothing rewrites it later unless a caller PATCHes
+    the topic, or consolidation merges the topic's idle members (which joins their bodies and
+    calls no model); this exists so that the index is never blank, because a blank summary is
+    indistinguishable from a topic about nothing.
     """
     first = body.strip().split(".")[0].strip() if body.strip() else ""
     return clamp(first or title.strip(), MAX_SUMMARY)

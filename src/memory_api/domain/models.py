@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 Kind = Literal["episode", "fact", "procedure", "summary"]
 Trust = Literal["stated", "observed", "inferred", "untrusted"]
+TRUST_ORDER: tuple[Trust, ...] = ("stated", "observed", "inferred", "untrusted")
+"""Most trusted first."""
 Scope = Literal["account", "profile", "session"]
 ShortText = Annotated[str, Field(min_length=1, max_length=200)]
 
