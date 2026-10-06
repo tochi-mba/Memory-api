@@ -14,7 +14,7 @@ import pytest
 
 from conftest import ACCOUNT
 from memory_api.core.consolidator import run_consolidator, start_consolidator, stop_consolidator
-from memory_api.domain.models import MemoryInput, Selection
+from memory_api.domain.models import MemoryInput, Selection, Trust
 from memory_api.store.sql import SQLStore
 
 if TYPE_CHECKING:
@@ -43,6 +43,40 @@ def test_two_idle_facts_in_one_topic_become_a_summary(store: SQLStore, clock: Fa
     assert retrieved.data[0].source == "consolidation"
     audit = store.listing(ACCOUNT, Selection(include_history=True), retrieval=False)
     assert len(audit.data) == 3
+
+
+def test_a_merge_of_stated_facts_is_still_stated(store: SQLStore, clock: FakeClock) -> None:
+    """The bug, named: every merge was stamped `inferred`, so a person's own stated facts fell
+    out of each stated-only search once they had gone a month unused."""
+    _write(store, "Earl Grey")
+    _write(store, "Assam in the morning")
+    clock.advance(40 * DAY)
+
+    store.consolidate(30 * DAY)
+
+    stated = store.listing(ACCOUNT, Selection(include_inferred=False), retrieval=True)
+    assert [(row.kind, row.trust) for row in stated.data] == [("summary", "stated")]
+
+
+@pytest.mark.parametrize(
+    ("trusts", "merged"),
+    [
+        (("stated", "observed"), "observed"),
+        (("observed", "inferred"), "inferred"),
+        (("inferred", "stated"), "inferred"),
+    ],
+)
+def test_a_merge_is_as_trusted_as_its_least_trusted_member(
+    store: SQLStore, clock: FakeClock, trusts: tuple[Trust, Trust], merged: Trust
+) -> None:
+    for body, trust in zip(("Earl Grey", "Assam"), trusts, strict=True):
+        store.write(ACCOUNT, ACCOUNT, MemoryInput(title="Favourite tea", body=body, trust=trust))
+    clock.advance(40 * DAY)
+
+    store.consolidate(30 * DAY)
+
+    retrieved = store.listing(ACCOUNT, Selection(), retrieval=True)
+    assert [row.trust for row in retrieved.data] == [merged]
 
 
 def test_a_lone_idle_memory_is_left_alone(store: SQLStore, clock: FakeClock) -> None:

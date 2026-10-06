@@ -8,6 +8,12 @@ All notable changes to memory-api are recorded here. The format follows
 
 ### Fixed
 
+- **A merged summary is as trusted as its least trusted member.** Consolidation stamped
+  every merge `inferred`, though it only joins the members' own words and calls no model, so a
+  person's stated facts dropped out of every stated-only search once they had gone a month
+  unused. Facts they stated now stay `stated`; one `inferred` member still makes the merge
+  `inferred`. The topic docstring no longer says a model writes a better summary during
+  consolidation.
 - **settings-client 0.4.2.** A 2xx answer the client cannot use -- a proxy's page, an empty
   body, a document from a newer settings-api -- is treated as an outage and degrades as one,
   instead of reaching this service as a 500.
